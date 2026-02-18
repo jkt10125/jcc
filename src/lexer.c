@@ -19,7 +19,16 @@ void lexerInit(Lexer *lx, const char *src) {
 }
 
 static void skipSpace(Lexer *lx) {
-    while (lx->src[lx->pos] && isspace((unsigned char)lx->src[lx->pos])) lx->pos++;
+    for (;;) {
+        while (lx->src[lx->pos] && isspace((unsigned char)lx->src[lx->pos])) lx->pos++;
+        // line comment //
+        if (lx->src[lx->pos] == '/' && lx->src[lx->pos + 1] == '/') {
+            lx->pos += 2;
+            while (lx->src[lx->pos] && lx->src[lx->pos] != '\n') lx->pos++;
+            continue;
+        }
+        break;
+    }
 }
 
 Token lexerNext(Lexer *lx) {
