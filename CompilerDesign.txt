@@ -1,0 +1,85 @@
+# Minimalist 64-bit Word Language Specification
+
+## 1. Overview
+
+- Single 64-bit signed integer type (`int`) for all values.
+- One implicit global memory array `mem`, fixed size.
+- Only functions allowed at global scope.
+- Functions always return an integer.
+- Variables inside functions are implicitly created on first assignment.
+- Single local scope per function (blocks `{}` do not create new scopes).
+- Array access `x[i]` is supported for both locals and the global `mem`.
+- Address-of operator `&` is supported.
+- Functions can be referenced as integers (function pointers).
+- Recursion and indirect function calls are allowed.
+
+## 2. Program Structure
+
+- A program consists of a sequence of function definitions.
+- One function must be named `main()` as the entry point.
+- No global variables other than `mem`.
+
+## 3. Variables
+
+- Function parameters and first-assigned identifiers inside functions are locals.
+- All locals exist for the entire duration of the function.
+- Using an undefined variable on the right-hand side is an error.
+
+## 4. Global Memory
+
+- `mem` is a preallocated array of 64-bit integers.
+- Size is fixed and specified at compile time.
+- Accessible via `mem[index]`.
+
+## 5. Functions
+
+- Function definitions: `name(param1, param2, ...) { ... }`
+- No keyword is needed to define a function.
+- All functions return integers.
+- Functions can be called directly or via a function pointer (`int` storing address).
+- Function pointers can be stored in locals or `mem`.
+
+## 6. Statements
+
+- Assignment: `x = expr;` (creates local if not existing)
+- Return: `return expr;`
+- Expression statement: `expr;`
+- Control flow:
+  - `if (expr) statement` optionally followed by `else statement`
+  - `while (expr) statement`
+- Blocks `{ ... }` group statements but do not create a new scope.
+
+## 7. Expressions
+
+- Arithmetic: `+`, `-`, `*`, `/`, `%`
+- Comparison: `==`, `!=`, `<`, `>`, `<=`, `>=`
+- Assignment: `=`
+- Address-of: `&x`
+- Array access: `x[expr]`
+- Function call: `f(expr1, expr2, ...)`
+- Parentheses for grouping: `(expr)`
+
+## 8. Function Pointers
+
+- Any function can be referenced as `&function_name`.
+- Function pointers can be stored in locals or `mem`.
+- Indirect calls: `(function_pointer)(args)`.
+
+## 9. Example Program
+
+add(a, b) {
+    return a + b;
+}
+
+main() {
+    mem[0] = &add;
+    x = 5;
+    y = 10;
+    result = mem[0](x, y) + mem[1];
+    return result;
+}
+
+- Uses implicit locals: `x`, `y`, `result`.
+- Stores function pointer in `mem`.
+- Performs indirect function call.
+- Returns 15.
