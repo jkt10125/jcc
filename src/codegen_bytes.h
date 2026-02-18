@@ -97,6 +97,9 @@ void patchRel32(ByteBuf *b, size_t atOffset, int32_t rel);
 size_t emitJccRel32Placeholder(ByteBuf *b, uint8_t cc);
 void emitCmpRegImm8(ByteBuf *b, Reg reg, uint8_t imm);
 void emitTestRegReg(ByteBuf *b, Reg a, Reg bReg);
+void emitCmpRegReg(ByteBuf *b, Reg left, Reg right);
+void emitSetccAl(ByteBuf *b, uint8_t cc);
+void emitMovzxRaxAl(ByteBuf *b);
 
 #endif
 

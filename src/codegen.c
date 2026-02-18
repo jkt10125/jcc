@@ -29,14 +29,17 @@ static void genBinOp(FILE *out, Expr *e, VarList *locals) {
     genExpr(out, e->binop.right, locals);
     fprintf(out, "    popq %%rbx\n");
     switch (e->binop.op) {
-        case '+': fprintf(out, "    addq %%rbx, %%rax\n    movq %%rax, %%rax\n"); break;
-        case '-': fprintf(out, "    subq %%rax, %%rbx\n    movq %%rbx, %%rax\n"); break;
-        case '*': fprintf(out, "    imulq %%rbx, %%rax\n"); break;
-        case '/':
+        case BIN_ADD: fprintf(out, "    addq %%rbx, %%rax\n    movq %%rax, %%rax\n"); break;
+        case BIN_SUB: fprintf(out, "    subq %%rax, %%rbx\n    movq %%rbx, %%rax\n"); break;
+        case BIN_MUL: fprintf(out, "    imulq %%rbx, %%rax\n"); break;
+        case BIN_DIV:
             fprintf(out, "    movq %%rax, %%rdi\n    movq %%rbx, %%rax\n    cqto\n    idivq %%rdi\n"); // rax = rbx / rdi
             break;
-        case '%':
+        case BIN_MOD:
             fprintf(out, "    movq %%rax, %%rdi\n    movq %%rbx, %%rax\n    cqto\n    idivq %%rdi\n    movq %%rdx, %%rax\n");
+            break;
+        default:
+            fprintf(out, "    movq $0, %%rax\n");
             break;
     }
 }

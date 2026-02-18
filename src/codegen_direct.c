@@ -86,32 +86,72 @@ static void genMemStore(ByteBuf *text, PatchList *patches, Expr *indexExpr, Expr
     emitMovRegImm64(text, REG_RAX, 0);
 }
 
+static void genIndexLoad(ByteBuf *text, PatchList *patches, Expr *baseExpr, Expr *indexExpr, VarNode *locals) {
+    genExpr(text, patches, baseExpr, locals); // rax = base
+    emitPushReg(text, REG_RAX);
+    genExpr(text, patches, indexExpr, locals); // rax = index
+    emitPopReg(text, REG_R10); // r10 = base
+    emitLeaRegBaseIndexScaleDisp(text, REG_R11, REG_R10, REG_RAX, 8, 0);
+    emitMovRegMemDisp(text, REG_RAX, REG_R11, 0);
+}
+
+static void genIndexStore(ByteBuf *text, PatchList *patches, Expr *baseExpr, Expr *indexExpr, Expr *valueExpr, VarNode *locals) {
+    genExpr(text, patches, baseExpr, locals); // rax = base
+    emitPushReg(text, REG_RAX);
+    genExpr(text, patches, indexExpr, locals); // rax = index
+    emitPushReg(text, REG_RAX);
+    genExpr(text, patches, valueExpr, locals); // rax = value
+    emitMovRegReg(text, REG_R11, REG_RAX); // r11 = value
+    emitPopReg(text, REG_RAX); // rax = index
+    emitPopReg(text, REG_R10); // r10 = base
+    emitLeaRegBaseIndexScaleDisp(text, REG_R10, REG_R10, REG_RAX, 8, 0);
+    emitMovMemDispReg(text, REG_R10, 0, REG_R11);
+    emitMovRegImm64(text, REG_RAX, 0);
+}
+
 static void genBinOp(ByteBuf *text, PatchList *patches, Expr *e, VarNode *locals) {
     genExpr(text, patches, e[0].binop.left, locals);
     emitPushReg(text, REG_RAX);
     genExpr(text, patches, e[0].binop.right, locals);
     emitPopReg(text, REG_R11); // left
-    char op = e[0].binop.op;
-    if (op == '+') {
+    BinOpKind op = e[0].binop.op;
+    if (op == BIN_ADD) {
         emitAddRegReg(text, REG_RAX, REG_R11);
         return;
     }
-    if (op == '*') {
+    if (op == BIN_MUL) {
         emitIMulRegReg(text, REG_RAX, REG_R11);
         return;
     }
-    if (op == '-') {
+    if (op == BIN_SUB) {
         emitMovRegReg(text, REG_R10, REG_R11);
         emitSubRegReg(text, REG_R10, REG_RAX);
         emitMovRegReg(text, REG_RAX, REG_R10);
         return;
     }
-    if (op == '/' || op == '%') {
+    if (op == BIN_DIV || op == BIN_MOD) {
         emitMovRegReg(text, REG_R10, REG_RAX); // divisor
         emitMovRegReg(text, REG_RAX, REG_R11); // dividend
         emitCqo(text);
         emitIDivReg(text, REG_R10);
-        if (op == '%') emitMovRegReg(text, REG_RAX, REG_RDX);
+        if (op == BIN_MOD) emitMovRegReg(text, REG_RAX, REG_RDX);
+        return;
+    }
+    // comparisons: result is 0 or 1 in rax
+    if (op == BIN_EQ || op == BIN_NEQ || op == BIN_LT || op == BIN_GT || op == BIN_LE || op == BIN_GE) {
+        // left in r11, right in rax
+        emitCmpRegReg(text, REG_R11, REG_RAX);
+        // cc mapping for SETcc
+        // E=4, NE=5, L=12, G=15, LE=14, GE=13 (signed comparisons)
+        uint8_t cc = 4;
+        if (op == BIN_EQ) cc = 4;
+        else if (op == BIN_NEQ) cc = 5;
+        else if (op == BIN_LT) cc = 12;
+        else if (op == BIN_GE) cc = 13;
+        else if (op == BIN_LE) cc = 14;
+        else if (op == BIN_GT) cc = 15;
+        emitSetccAl(text, cc);
+        emitMovzxRaxAl(text);
         return;
     }
     emitMovRegImm64(text, REG_RAX, 0);
@@ -121,6 +161,10 @@ static void genCall(ByteBuf *text, PatchList *patches, Expr *e, VarNode *locals)
     // builtins
     if (e[0].call.fn->kind == EX_VAR && strcmp(e[0].call.fn->varName, "__mem_store") == 0) {
         genMemStore(text, patches, e[0].call.args[0], e[0].call.args[1], locals);
+        return;
+    }
+    if (e[0].call.fn->kind == EX_VAR && strcmp(e[0].call.fn->varName, "__index_store") == 0) {
+        genIndexStore(text, patches, e[0].call.args[0], e[0].call.args[1], e[0].call.args[2], locals);
         return;
     }
     if (e[0].call.fn->kind == EX_VAR && strcmp(e[0].call.fn->varName, "print") == 0) {
@@ -214,14 +258,25 @@ static void genExpr(ByteBuf *text, PatchList *patches, Expr *e, VarNode *locals)
             return;
         }
         case EX_ADDR:
-            emitMovRegImm64Patch(text, patches, SEG_TEXT, REG_RAX, e[0].addrName, 0);
+            // &local or &function
+            {
+                int idx = findVarIndex(locals, e[0].addrName);
+                if (idx >= 0) {
+                    // rax = rbp - 8*(idx+1)
+                    emitMovRegReg(text, REG_RAX, REG_RBP);
+                    emitMovRegImm64(text, REG_R10, (uint64_t)(8 * (idx + 1)));
+                    emitSubRegReg(text, REG_RAX, REG_R10);
+                } else {
+                    emitMovRegImm64Patch(text, patches, SEG_TEXT, REG_RAX, e[0].addrName, 0);
+                }
+            }
             return;
         case EX_INDEX:
             if (e[0].index.arr->kind == EX_VAR && strcmp(e[0].index.arr->varName, "mem") == 0) {
                 genMemLoad(text, patches, e[0].index.index, locals);
                 return;
             }
-            emitMovRegImm64(text, REG_RAX, 0);
+            genIndexLoad(text, patches, e[0].index.arr, e[0].index.index, locals);
             return;
         case EX_CALL:
             genCall(text, patches, e, locals);
@@ -233,7 +288,7 @@ static void genExpr(ByteBuf *text, PatchList *patches, Expr *e, VarNode *locals)
     emitMovRegImm64(text, REG_RAX, 0);
 }
 
-static void genStmtList(ByteBuf *text, PatchList *patches, Stmt *s, VarNode *locals, uint32_t stackAlloc) {
+static void genStmtListInternal(ByteBuf *text, PatchList *patches, Stmt *s, VarNode *locals, uint32_t stackAlloc, int emitDefaultReturn) {
     for (Stmt *p = s; p; p = p[0].next) {
         if (p[0].kind == NODE_STMT_ASSIGN) {
             genExpr(text, patches, p[0].assign.rhs, locals);
@@ -246,27 +301,72 @@ static void genStmtList(ByteBuf *text, PatchList *patches, Stmt *s, VarNode *loc
             return;
         } else if (p[0].kind == NODE_STMT_EXPR) {
             genExpr(text, patches, p[0].exprStmt, locals);
+        } else if (p[0].kind == NODE_STMT_BLOCK) {
+            genStmtListInternal(text, patches, p[0].blockBody, locals, stackAlloc, 0);
+        } else if (p[0].kind == NODE_STMT_IF) {
+            genExpr(text, patches, p[0].ifStmt.cond, locals);
+            emitTestRegReg(text, REG_RAX, REG_RAX);
+            size_t jeElse = emitJccRel32Placeholder(text, 0x4); // JE
+            // then
+            genStmtListInternal(text, patches, p[0].ifStmt.thenBranch, locals, stackAlloc, 0);
+            if (p[0].ifStmt.elseBranch) {
+                size_t jmpEnd = emitJmpRel32Placeholder(text);
+                int32_t relElse = (int32_t)((int64_t)text[0].size - (int64_t)(jeElse + 4));
+                patchRel32(text, jeElse, relElse);
+                genStmtListInternal(text, patches, p[0].ifStmt.elseBranch, locals, stackAlloc, 0);
+                int32_t relEnd = (int32_t)((int64_t)text[0].size - (int64_t)(jmpEnd + 4));
+                patchRel32(text, jmpEnd, relEnd);
+            } else {
+                int32_t relElse = (int32_t)((int64_t)text[0].size - (int64_t)(jeElse + 4));
+                patchRel32(text, jeElse, relElse);
+            }
+        } else if (p[0].kind == NODE_STMT_WHILE) {
+            size_t loopStart = text[0].size;
+            genExpr(text, patches, p[0].whileStmt.cond, locals);
+            emitTestRegReg(text, REG_RAX, REG_RAX);
+            size_t jeEnd = emitJccRel32Placeholder(text, 0x4); // JE
+            genStmtListInternal(text, patches, p[0].whileStmt.body, locals, stackAlloc, 0);
+            // jmp back
+            size_t jmpBack = emitJmpRel32Placeholder(text);
+            int32_t relBack = (int32_t)((int64_t)loopStart - (int64_t)(jmpBack + 4));
+            patchRel32(text, jmpBack, relBack);
+            int32_t relEnd = (int32_t)((int64_t)text[0].size - (int64_t)(jeEnd + 4));
+            patchRel32(text, jeEnd, relEnd);
         }
     }
-    emitMovRegImm64(text, REG_RAX, 0);
-    emitLeave(text);
-    emitRet(text);
+    if (emitDefaultReturn) {
+        emitMovRegImm64(text, REG_RAX, 0);
+        emitLeave(text);
+        emitRet(text);
+    }
     (void)stackAlloc;
 }
 
 static uint32_t align16(uint32_t x) { return (x + 15u) & ~15u; }
 
+static void collectAssignedVars(Stmt *s, VarNode **locals, int *localCount) {
+    for (Stmt *p = s; p; p = p[0].next) {
+        if (p[0].kind == NODE_STMT_ASSIGN) {
+            if (findVarIndex(locals[0], p[0].assign.lhs) < 0) {
+                addVarNode(locals, p[0].assign.lhs, localCount[0]);
+                localCount[0] += 1;
+            }
+        } else if (p[0].kind == NODE_STMT_BLOCK) {
+            collectAssignedVars(p[0].blockBody, locals, localCount);
+        } else if (p[0].kind == NODE_STMT_IF) {
+            collectAssignedVars(p[0].ifStmt.thenBranch, locals, localCount);
+            if (p[0].ifStmt.elseBranch) collectAssignedVars(p[0].ifStmt.elseBranch, locals, localCount);
+        } else if (p[0].kind == NODE_STMT_WHILE) {
+            collectAssignedVars(p[0].whileStmt.body, locals, localCount);
+        }
+    }
+}
+
 static void genFunctionBytes(ByteBuf *text, PatchList *patches, Function *fn) {
     VarNode *locals = NULL;
     for (int i=0;i<fn[0].paramCount;i++) addVarNode(&locals, fn[0].params[i], i);
     int localCount = fn[0].paramCount;
-    for (Stmt *s = fn[0].body; s; s = s[0].next) {
-        if (s[0].kind == NODE_STMT_ASSIGN) {
-            if (findVarIndex(locals, s[0].assign.lhs) < 0) {
-                addVarNode(&locals, s[0].assign.lhs, localCount++);
-            }
-        }
-    }
+    collectAssignedVars(fn[0].body, &locals, &localCount);
     uint32_t stackAlloc = align16((uint32_t)(localCount * 8));
 
     // prologue
@@ -298,7 +398,7 @@ static void genFunctionBytes(ByteBuf *text, PatchList *patches, Function *fn) {
         emitStoreLocal(text, i);
     }
 
-    genStmtList(text, patches, fn[0].body, locals, stackAlloc);
+    genStmtListInternal(text, patches, fn[0].body, locals, stackAlloc, 1);
 }
 
 static uint64_t computeDataVaddr(uint64_t textSize) {

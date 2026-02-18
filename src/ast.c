@@ -10,7 +10,7 @@ Expr *newVarExpr(char *name) {
     Expr *e = calloc(1, sizeof(Expr));
     e->kind = EX_VAR; e->varName = name; return e;
 }
-Expr *newBinOpExpr(char op, Expr *l, Expr *r) {
+Expr *newBinOpExpr(BinOpKind op, Expr *l, Expr *r) {
     Expr *e = calloc(1, sizeof(Expr));
     e->kind = EX_BINOP; e->binop.op = op; e->binop.left = l; e->binop.right = r; return e;
 }
@@ -35,6 +35,27 @@ Stmt *newReturnStmt(Expr *e) {
 }
 Stmt *newExprStmt(Expr *e) {
     Stmt *s = calloc(1, sizeof(Stmt)); s->kind = NODE_STMT_EXPR; s->exprStmt = e; return s;
+}
+
+Stmt *newBlockStmt(Stmt *body) {
+    Stmt *s = calloc(1, sizeof(Stmt)); s->kind = NODE_STMT_BLOCK; s->blockBody = body; return s;
+}
+
+Stmt *newIfStmt(Expr *cond, Stmt *thenBranch, Stmt *elseBranch) {
+    Stmt *s = calloc(1, sizeof(Stmt));
+    s->kind = NODE_STMT_IF;
+    s->ifStmt.cond = cond;
+    s->ifStmt.thenBranch = thenBranch;
+    s->ifStmt.elseBranch = elseBranch;
+    return s;
+}
+
+Stmt *newWhileStmt(Expr *cond, Stmt *body) {
+    Stmt *s = calloc(1, sizeof(Stmt));
+    s->kind = NODE_STMT_WHILE;
+    s->whileStmt.cond = cond;
+    s->whileStmt.body = body;
+    return s;
 }
 
 Function *newFunction(char *name, char **params, int paramCount, Stmt *body) {

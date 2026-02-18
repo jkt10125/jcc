@@ -27,6 +27,17 @@ static Stmt *parseStmt(Parser *p);
 
 static char *copyIdent(const char *s) { return s ? strDup(s) : NULL; }
 
+static Stmt *parseBlock(Parser *p) {
+    expect(p, TOK_LBRACE);
+    Stmt *head = NULL, *tail = NULL;
+    while (p->cur.kind != TOK_RBRACE && p->cur.kind != TOK_EOF) {
+        Stmt *s = parseStmt(p);
+        if (!head) head = tail = s; else { tail->next = s; tail = s; }
+    }
+    expect(p, TOK_RBRACE);
+    return newBlockStmt(head);
+}
+
 static Expr *parsePrimary(Parser *p) {
     if (p->cur.kind==TOK_NUMBER) {
         Expr *e = newIntExpr(p->cur.num);
@@ -103,7 +114,7 @@ static Expr *parsePostfix(Parser *p) {
 static Expr *parseMulDiv(Parser *p) {
     Expr *e = parsePostfix(p);
     while (p->cur.kind==TOK_STAR || p->cur.kind==TOK_SLASH || p->cur.kind==TOK_PERCENT) {
-        char op = (p->cur.kind==TOK_STAR)?'*':(p->cur.kind==TOK_SLASH)?'/':'%';
+        BinOpKind op = (p->cur.kind==TOK_STAR)?BIN_MUL:(p->cur.kind==TOK_SLASH)?BIN_DIV:BIN_MOD;
         next(p);
         Expr *r = parsePostfix(p);
         e = newBinOpExpr(op,e,r);
@@ -114,7 +125,7 @@ static Expr *parseMulDiv(Parser *p) {
 static Expr *parseAddSub(Parser *p) {
     Expr *e = parseMulDiv(p);
     while (p->cur.kind==TOK_PLUS || p->cur.kind==TOK_MINUS) {
-        char op = (p->cur.kind==TOK_PLUS)?'+':'-';
+        BinOpKind op = (p->cur.kind==TOK_PLUS)?BIN_ADD:BIN_SUB;
         next(p);
         Expr *r = parseMulDiv(p);
         e = newBinOpExpr(op,e,r);
@@ -122,11 +133,66 @@ static Expr *parseAddSub(Parser *p) {
     return e;
 }
 
+static Expr *parseCompare(Parser *p) {
+    Expr *e = parseAddSub(p);
+    while (p->cur.kind==TOK_EQ || p->cur.kind==TOK_NEQ ||
+           p->cur.kind==TOK_LT || p->cur.kind==TOK_GT ||
+           p->cur.kind==TOK_LE || p->cur.kind==TOK_GE) {
+        BinOpKind op = BIN_EQ;
+        if (p->cur.kind==TOK_EQ) op = BIN_EQ;
+        else if (p->cur.kind==TOK_NEQ) op = BIN_NEQ;
+        else if (p->cur.kind==TOK_LT) op = BIN_LT;
+        else if (p->cur.kind==TOK_GT) op = BIN_GT;
+        else if (p->cur.kind==TOK_LE) op = BIN_LE;
+        else if (p->cur.kind==TOK_GE) op = BIN_GE;
+        next(p);
+        Expr *r = parseAddSub(p);
+        e = newBinOpExpr(op, e, r);
+    }
+    return e;
+}
+
 static Expr *parseExpr(Parser *p) {
-    return parseAddSub(p);
+    return parseCompare(p);
 }
 
 static Stmt *parseStmt(Parser *p) {
+    if (p->cur.kind==TOK_LBRACE) {
+        return parseBlock(p);
+    }
+    if (p->cur.kind==TOK_IF) {
+        next(p);
+        expect(p, TOK_LPAREN);
+        Expr *cond = parseExpr(p);
+        expect(p, TOK_RPAREN);
+        if (p->cur.kind != TOK_LBRACE) {
+            fprintf(stderr, "parse error: if-body must be a block { ... }\n");
+            exit(1);
+        }
+        Stmt *thenBranch = parseBlock(p);
+        Stmt *elseBranch = NULL;
+        if (p->cur.kind==TOK_ELSE) {
+            next(p);
+            if (p->cur.kind != TOK_LBRACE) {
+                fprintf(stderr, "parse error: else-body must be a block { ... }\n");
+                exit(1);
+            }
+            elseBranch = parseBlock(p);
+        }
+        return newIfStmt(cond, thenBranch, elseBranch);
+    }
+    if (p->cur.kind==TOK_WHILE) {
+        next(p);
+        expect(p, TOK_LPAREN);
+        Expr *cond = parseExpr(p);
+        expect(p, TOK_RPAREN);
+        if (p->cur.kind != TOK_LBRACE) {
+            fprintf(stderr, "parse error: while-body must be a block { ... }\n");
+            exit(1);
+        }
+        Stmt *body = parseBlock(p);
+        return newWhileStmt(cond, body);
+    }
     if (p->cur.kind==TOK_RETURN) {
         next(p);
         Expr *e = parseExpr(p);
@@ -148,17 +214,20 @@ static Stmt *parseStmt(Parser *p) {
                 next(p);
                 Expr *rhs = parseExpr(p);
                 expect(p, TOK_SEMI);
-                // build index expr as LHS - represent as special assign to mem[index]
-                Expr *arr = newVarExpr(name);
-                Expr *lhsIndex = newIndexExpr(arr, idx);
-                // create synthetic assign with lhs name "mem" and store index in rhs as needed
-                // For simplicity, encode as assignment to variable name "mem" and RHS is a call to store (handled in codegen)
-                // Instead, we will create an assignment where lhs is "mem_index" combined; but to keep AST simple, return an exprStmt that performs store via a special call
-                // We'll create an assignment with lhs "mem" and rhs being a call-like expression: store(index, rhs)
-                Expr **args = malloc(sizeof(Expr*)*2);
-                args[0] = idx; args[1] = rhs;
-                Expr *storeCall = newCallExpr(newVarExpr(strDup("__mem_store")), args, 2);
-                return newExprStmt(storeCall);
+                if (strcmp(name, "mem") == 0) {
+                    Expr **args = malloc(sizeof(Expr*)*2);
+                    args[0] = idx; args[1] = rhs;
+                    Expr *storeCall = newCallExpr(newVarExpr(strDup("__mem_store")), args, 2);
+                    return newExprStmt(storeCall);
+                } else {
+                    // generic pointer/array store: base[index] = value
+                    Expr **args = malloc(sizeof(Expr*)*3);
+                    args[0] = newVarExpr(name); // base address expression (local)
+                    args[1] = idx;
+                    args[2] = rhs;
+                    Expr *storeCall = newCallExpr(newVarExpr(strDup("__index_store")), args, 3);
+                    return newExprStmt(storeCall);
+                }
             } else {
                 // expression stmt of index access
                 Expr *arr = newVarExpr(name);
@@ -222,14 +291,8 @@ Program *parseProgram(Parser *p) {
             }
         }
         expect(p, TOK_RPAREN);
-        expect(p, TOK_LBRACE);
-        Stmt *head = NULL, *tail = NULL;
-        while (p->cur.kind!=TOK_RBRACE && p->cur.kind!=TOK_EOF) {
-            Stmt *s = parseStmt(p);
-            if (!head) head = tail = s; else { tail->next = s; tail = s; }
-        }
-        expect(p, TOK_RBRACE);
-        Function *f = newFunction(fname, params, pc, head);
+        Stmt *block = parseBlock(p);
+        Function *f = newFunction(fname, params, pc, block);
         // append to program
         f->next = prog->functions; prog->functions = f;
     }

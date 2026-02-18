@@ -41,6 +41,9 @@ Token lexerNext(Lexer *lx) {
         int len = lx->pos - start;
         char *t = strNDup(lx->src + start, len);
         if (strcmp(t, "return")==0) { setToken(lx, TOK_RETURN, t, 0); }
+        else if (strcmp(t, "if")==0) { setToken(lx, TOK_IF, t, 0); }
+        else if (strcmp(t, "else")==0) { setToken(lx, TOK_ELSE, t, 0); }
+        else if (strcmp(t, "while")==0) { setToken(lx, TOK_WHILE, t, 0); }
         else setToken(lx, TOK_IDENT, t, 0);
         return lx->cur;
     }
@@ -75,8 +78,14 @@ Token lexerNext(Lexer *lx) {
             else setToken(lx, TOK_ASSIGN,"=",0);
             break;
         case '&': setToken(lx, TOK_AMP,"&",0); break;
-        case '<': setToken(lx, TOK_LT,"<",0); break;
-        case '>': setToken(lx, TOK_GT,">",0); break;
+        case '<':
+            if (lx->src[lx->pos]=='=') { lx->pos++; setToken(lx, TOK_LE,"<=",0); }
+            else setToken(lx, TOK_LT,"<",0);
+            break;
+        case '>':
+            if (lx->src[lx->pos]=='=') { lx->pos++; setToken(lx, TOK_GE,">=",0); }
+            else setToken(lx, TOK_GT,">",0);
+            break;
         case '!':
             if (lx->src[lx->pos]=='=') { lx->pos++; setToken(lx, TOK_NEQ,"!=",0); }
             break;

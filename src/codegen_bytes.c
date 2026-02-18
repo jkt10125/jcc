@@ -225,3 +225,26 @@ void emitTestRegReg(ByteBuf *b, Reg a, Reg bReg) {
     emitModRm(b, 3, bReg & 7, a & 7);
 }
 
+void emitCmpRegReg(ByteBuf *b, Reg left, Reg right) {
+    // cmp r/m64, r64 : 48 39 /r  (computes left - right)
+    int r = (right >> 3) & 1;
+    int bb = (left >> 3) & 1;
+    emitRexW(b, r, 0, bb);
+    emitU8(b, 0x39);
+    emitModRm(b, 3, right & 7, left & 7);
+}
+
+void emitSetccAl(ByteBuf *b, uint8_t cc) {
+    // setcc al : 0F 90+cc C0
+    emitU8(b, 0x0F);
+    emitU8(b, (uint8_t)(0x90 | (cc & 0x0F)));
+    emitU8(b, 0xC0);
+}
+
+void emitMovzxRaxAl(ByteBuf *b) {
+    // movzx eax, al : 0F B6 C0  (zero-extends into eax, which also clears upper 32 of rax)
+    emitU8(b, 0x0F);
+    emitU8(b, 0xB6);
+    emitU8(b, 0xC0);
+}
+

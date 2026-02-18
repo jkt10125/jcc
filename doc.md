@@ -26,7 +26,7 @@ The language is intentionally small: **one signed 64-bit integer type** and a **
   - 4.2 Return
   - 4.3 Expression statement
   - 4.4 Blocks
-  - 4.5 Control flow (`if`, `while`) (language spec)
+  - 4.5 Control flow (`if`, `else`, `while`)
 - **5. Expressions**
   - 5.1 Literals and identifiers
   - 5.2 Arithmetic operators
@@ -35,6 +35,8 @@ The language is intentionally small: **one signed 64-bit integer type** and a **
   - 5.5 Array indexing: `x[i]`
   - 5.6 Address-of: `&name`
   - 5.7 Function calls (direct and indirect)
+  - 5.8 Calling convention notes (how args are passed)
+  - 5.9 Argument count behavior (too few / too many)
 - **6. Function pointers**
   - 6.1 Taking function addresses
   - 6.2 Storing in locals / `mem`
@@ -344,7 +346,7 @@ x = mem[10];
 Indexing can be used on:
 
 - the global `mem`
-- (language spec) locals that hold addresses/arrays
+- locals that hold addresses/arrays (pointer-like `int64` values)
 
 Index expressions are integer expressions:
 
@@ -353,17 +355,59 @@ i = 3;
 mem[i + 2] = 99;   // writes mem[5]
 ```
 
+#### 5.5.1 Local pointer indexing
+
+In this language, **addresses are integers** (still the same single `int64` type).
+
+That means you can store an address into a local and then index it:
+
+```c
+main() {
+    x = 123;
+    p = &x;      // p is an int64 address
+    print(p[0]); // prints 123
+    p[0] = 999;  // writes to x through the pointer
+    print(x);    // prints 999
+    return 0;
+}
+```
+
+In the current `jcc` implementation:
+
+- `mem[i]` uses the global `mem` base pointer (special-cased).
+- Any other `base[i]` is treated as pointer indexing:
+  - evaluate `base` → base address (int64)
+  - evaluate `i` → index (int64)
+  - compute effective address \(base + i \times 8\)
+  - load/store an 8-byte signed integer
+
+This is intentionally low-level. Indexing an invalid address or going out-of-bounds is undefined behavior.
+
 ### 5.6 Address-of: `&name`
 
 The address-of operator produces an integer “address”:
 
 - `&functionName` produces a function pointer integer
-- (language spec) `&x` produces an address-of a local variable
+- `&x` produces the address of a local variable slot (supported by current `jcc`)
 
 Example (function pointer):
 
 ```c
 mem[0] = &add;
+```
+
+Example (local address-of):
+
+```c
+main() {
+    a = 10;
+    b = 20;
+    p = &b;
+    p[0] = 777;
+    print(a);
+    print(b); // prints 777
+    return 0;
+}
 ```
 
 ### 5.7 Function calls (direct and indirect)
@@ -386,6 +430,42 @@ Indirect via `mem`:
 ```c
 mem[0] = &add;
 result = mem[0](5, 10);
+```
+
+### 5.8 Calling convention notes (how args are passed)
+
+This section explains runtime behavior of calls. It is not part of the surface syntax, but it matters for performance and for understanding “too many / too few arguments”.
+
+The direct-ELF backend in `jcc` follows Linux x86_64 System V calling convention style rules:
+
+- **Args 1..6** are passed in registers:
+  - 1 → `RDI`, 2 → `RSI`, 3 → `RDX`, 4 → `RCX`, 5 → `R8`, 6 → `R9`
+- **Args 7+** are passed on the stack.
+- Return value is in `RAX`.
+
+### 5.9 Argument count behavior (too few / too many)
+
+The language spec does not explicitly define arity mismatch behavior. The current `jcc` makes it **predictable**:
+
+- **Extra arguments**: ignored by the callee.
+- **Missing arguments**: treated as `0`.
+
+More precisely:
+
+- For a **direct call** like `add(5)`, missing arguments are padded with `0` up to that function’s parameter count.
+- For an **indirect call** like `mem[0](5)`, the callee is not statically known, so `jcc` pads missing arguments with `0` up to the **maximum parameter count of any function in the program**. This keeps indirect calls predictable too.
+
+Example:
+
+```c
+add3(a, b, c) { return a + b + c; }
+
+main() {
+    print(add3(5));      // prints 5 (treated as add3(5,0,0))
+    mem[0] = &add3;
+    print(mem[0](7));    // prints 7 (pads missing args to 0)
+    return 0;
+}
 ```
 
 ---
@@ -517,20 +597,29 @@ This sets `MEM_ENTRIES = 1024` and the generated executable contains:
 
 ## 10. Notes about the current `jcc` implementation
 
-The **language specification** in `CompilerDesign.txt` includes `if`, `while`, and comparisons. The current compiler implementation in this repository is intentionally minimalist and may implement only a subset at any given time.
+The **language specification** in `CompilerDesign.txt` is the source of truth for the language. The compiler in this repository is intentionally minimalist, but it now covers the essential spec features and includes a few pragmatic extensions.
 
 As of the current implementation:
 
 - **Supported**:
   - Function definitions and calls (direct + indirect through `mem`)
   - `mem[index]` load and `mem[index] = value` store
+  - Local pointer features:
+    - `&x` for locals (address-of local slot)
+    - `p[i]` load and `p[i] = v` store (pointer indexing)
   - `+ - * / %` arithmetic
-  - `return`
-  - `print(x)` builtin
-- **Not yet fully supported** (spec exists, compiler work may be needed):
-  - `if`, `else`, `while`
   - comparison operators (`== != < > <= >=`)
-  - address-of local variables (`&x`) if used beyond function addresses
+  - `return`
+  - blocks `{ ... }` (no new scope; function-level locals)
+  - `if (...) ... else ...`
+  - `while (...) ...`
+  - `print(x)` builtin
+  - `//` line comments
+  - Calls:
+    - more than 6 arguments supported (stack arguments)
+    - missing arguments padded with 0 (see 5.9)
+- **Not yet implemented** (spec exists, compiler work may be needed):
+  - None of the essential items in `CompilerDesign.txt` remain missing.\n+    Future work is quality-of-implementation (better error messages, more static checks, optimizations, more tests).
 
 If you want, we can extend `jcc` step-by-step to cover the full `CompilerDesign.txt` feature set while keeping the implementation minimalist.
 
