@@ -91,15 +91,6 @@ static void genExpr(FILE *out, Expr *e, VarList *locals) {
                 fprintf(out, "    movq %%rdx, (%%rcx)\n");
                 return;
             }
-            // builtin: print(x)
-            if (e->call.fn->kind==EX_VAR && strcmp(e->call.fn->varName,"print")==0) {
-                if (e->call.argCount>0) {
-                    genExpr(out, e->call.args[0], locals); // value -> rax
-                    fprintf(out, "    movq %%rax, %%rdi\n");
-                    fprintf(out, "    call printInt\n");
-                }
-                return;
-            }
             // evaluate args into registers RDI, RSI, RDX, RCX, R8, R9
             const char *regs[] = {"%rdi","%rsi","%rdx","%rcx","%r8","%r9"};
             for (int i=0;i<e->call.argCount && i<6;i++) {

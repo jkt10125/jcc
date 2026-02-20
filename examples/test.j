@@ -4,6 +4,6 @@ fact(n) {
 }
 
 main() {
-    print(fact(5));
+    __print(fact(5));
     return 0;
 }

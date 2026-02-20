@@ -167,16 +167,6 @@ static void genCall(ByteBuf *text, PatchList *patches, Expr *e, VarNode *locals)
         genIndexStore(text, patches, e[0].call.args[0], e[0].call.args[1], e[0].call.args[2], locals);
         return;
     }
-    if (e[0].call.fn->kind == EX_VAR && strcmp(e[0].call.fn->varName, "print") == 0) {
-        if (e[0].call.argCount > 0) {
-            genExpr(text, patches, e[0].call.args[0], locals);
-            emitMovRegReg(text, REG_RDI, REG_RAX);
-            emitMovRegImm64Patch(text, patches, SEG_TEXT, REG_RAX, "printInt", 0);
-            emitCallReg(text, REG_RAX);
-            emitMovRegImm64(text, REG_RAX, 0);
-        }
-        return;
-    }
 
     Reg argRegs[6] = { REG_RDI, REG_RSI, REG_RDX, REG_RCX, REG_R8, REG_R9 };
     int argCount = e[0].call.argCount;
@@ -436,11 +426,17 @@ int emitDirectElfProgram(const char *outPath, Program *prog, int memEntries) {
     RuntimeOffsets rtOff;
     emitRuntime(&text, &patches, &rtOff);
     symbolSet(&symbols, "_start", (0x400000 + 0x1000) + rtOff.startOffset);
-    symbolSet(&symbols, "printInt", (0x400000 + 0x1000) + rtOff.printIntOffset);
+    symbolSet(&symbols, "rt_put_int", (0x400000 + 0x1000) + rtOff.putIntOffset);
+    symbolSet(&symbols, "rt_get_int", (0x400000 + 0x1000) + rtOff.getIntOffset);
+    symbolSet(&symbols, "rt_exit", (0x400000 + 0x1000) + rtOff.exitOffset);
 
     // collect function signatures for arity padding
     fnSigList = NULL;
     maxParamCount = 0;
+    // runtime helper signatures (so calls don't get padded up to maxParamCount)
+    addFnSig("rt_put_int", 1);
+    addFnSig("rt_get_int", 0);
+    addFnSig("rt_exit", 1);
     for (Function *f = prog[0].functions; f; f = f[0].next) {
         const char *symName = (strcmp(f[0].name, "main") == 0) ? "lang_main" : f[0].name;
         addFnSig(symName, f[0].paramCount);

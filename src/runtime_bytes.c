@@ -2,11 +2,14 @@
 
 // Emits:
 // _start: call lang_main; exit(return)
-// printInt: syscall-only decimal print with newline
+// rt_put_int: syscall-only decimal print with newline
+// rt_get_int: syscall-only read + parse signed decimal from stdin
+// rt_exit: syscall-only process exit
 //
 // Notes:
 // - We keep it minimal; caller-saved regs only.
-// - printInt expects value in RDI.
+// - rt_put_int expects value in RDI.
+// - rt_exit expects code in RDI.
 
 static void emitMovRegImm64Const(ByteBuf *text, Reg reg, uint64_t imm) {
     emitMovRegImm64(text, reg, imm);
@@ -29,8 +32,8 @@ void emitRuntime(ByteBuf *text, PatchList *patches, RuntimeOffsets *outOffsets) 
     emitMovRegImm64Const(text, REG_RAX, 60);
     emitSyscall(text);
 
-    // printInt:
-    outOffsets[0].printIntOffset = text[0].size;
+    // rt_put_int:
+    outOffsets[0].putIntOffset = text[0].size;
     // prologue: push rbp; mov rbp, rsp; sub rsp, 96 (buffer + locals)
     emitPushReg(text, REG_RBP);
     emitMovRegReg(text, REG_RBP, REG_RSP);
@@ -139,6 +142,144 @@ void emitRuntime(ByteBuf *text, PatchList *patches, RuntimeOffsets *outOffsets) 
     emitSyscall(text);
 
     // epilogue
+    emitLeave(text);
+    emitRet(text);
+
+    // rt_exit:
+    outOffsets[0].exitOffset = text[0].size;
+    emitMovRegImm64Const(text, REG_RAX, 60);
+    emitSyscall(text);
+    emitRet(text);
+
+    // rt_get_int:
+    outOffsets[0].getIntOffset = text[0].size;
+    // prologue: push rbp; mov rbp, rsp; sub rsp, 160 (buffer + scratch)
+    emitPushReg(text, REG_RBP);
+    emitMovRegReg(text, REG_RBP, REG_RSP);
+    emitSubRspImm32(text, 160);
+
+    // rsi = bufStart (rbp-160)
+    emitMovRegReg(text, REG_RSI, REG_RBP);
+    emitMovRegImm64Const(text, REG_RAX, 160);
+    emitSubRegReg(text, REG_RSI, REG_RAX);
+
+    // sys_read(0, rsi, 128)
+    emitMovRegImm64Const(text, REG_RAX, 0);  // read
+    emitMovRegImm64Const(text, REG_RDI, 0);  // fd=0
+    emitMovRegImm64Const(text, REG_RDX, 128);
+    emitSyscall(text);
+    // if (rax <= 0) return 0;
+    emitTestRegReg(text, REG_RAX, REG_RAX);
+    size_t jleReturnZero = emitJccRel32Placeholder(text, 0xE); // JLE
+
+    // r9 = end = bufStart + bytesRead
+    emitMovRegReg(text, REG_R9, REG_RSI);
+    emitAddRegReg(text, REG_R9, REG_RAX);
+
+    // r10 = sign (1)
+    emitMovRegImm64Const(text, REG_R10, 1);
+    // r8 = acc (0)
+    emitMovRegImm64Const(text, REG_R8, 0);
+
+    // skip_ws:
+    size_t skipWsStart = text[0].size;
+    // if (rsi >= r9) goto finish
+    emitCmpRegReg(text, REG_RSI, REG_R9);
+    size_t jgeFinishFromWs = emitJccRel32Placeholder(text, 0xD); // JGE
+    // c = *rsi (movzx eax, byte [rsi])
+    emitU8(text, 0x0F); emitU8(text, 0xB6); emitU8(text, 0x06);
+    // if c == ' ' || '\n' || '\t' || '\r' then ++rsi and loop
+    emitU8(text, 0x3C); emitU8(text, (uint8_t)' ');
+    size_t jeSpace = emitJccRel32Placeholder(text, 0x4); // JE
+    emitU8(text, 0x3C); emitU8(text, (uint8_t)'\n');
+    size_t jeNl = emitJccRel32Placeholder(text, 0x4); // JE
+    emitU8(text, 0x3C); emitU8(text, (uint8_t)'\t');
+    size_t jeTab = emitJccRel32Placeholder(text, 0x4); // JE
+    emitU8(text, 0x3C); emitU8(text, (uint8_t)'\r');
+    size_t jeCr = emitJccRel32Placeholder(text, 0x4); // JE
+    size_t jmpAfterWsChecks = emitJmpRel32Placeholder(text);
+    // ws_consume:
+    size_t wsConsume = text[0].size;
+    emitU8(text, 0x48); emitU8(text, 0xFF); emitU8(text, 0xC6); // inc rsi
+    size_t jmpBackSkipWs = emitJmpRel32Placeholder(text);
+
+    // patch JE targets to wsConsume
+    patchRel32(text, jeSpace, (int32_t)((int64_t)wsConsume - (int64_t)(jeSpace + 4)));
+    patchRel32(text, jeNl,    (int32_t)((int64_t)wsConsume - (int64_t)(jeNl + 4)));
+    patchRel32(text, jeTab,   (int32_t)((int64_t)wsConsume - (int64_t)(jeTab + 4)));
+    patchRel32(text, jeCr,    (int32_t)((int64_t)wsConsume - (int64_t)(jeCr + 4)));
+    patchRel32(text, jmpBackSkipWs, (int32_t)((int64_t)skipWsStart - (int64_t)(jmpBackSkipWs + 4)));
+
+    // continue after whitespace checks
+    size_t afterWsChecks = text[0].size;
+    patchRel32(text, jmpAfterWsChecks, (int32_t)((int64_t)afterWsChecks - (int64_t)(jmpAfterWsChecks + 4)));
+
+    // if (rsi >= r9) goto finish
+    emitCmpRegReg(text, REG_RSI, REG_R9);
+    size_t jgeFinishFromSign = emitJccRel32Placeholder(text, 0xD); // JGE
+    // c = *rsi
+    emitU8(text, 0x0F); emitU8(text, 0xB6); emitU8(text, 0x06);
+    // if c == '-' set sign=-1 and ++rsi
+    emitU8(text, 0x3C); emitU8(text, (uint8_t)'-');
+    size_t jneNotMinus = emitJccRel32Placeholder(text, 0x5); // JNE
+    emitMovRegImm64Const(text, REG_R10, (uint64_t)(int64_t)-1);
+    emitU8(text, 0x48); emitU8(text, 0xFF); emitU8(text, 0xC6); // inc rsi
+    size_t jmpAfterSign = emitJmpRel32Placeholder(text);
+    // not_minus:
+    size_t notMinus = text[0].size;
+    patchRel32(text, jneNotMinus, (int32_t)((int64_t)notMinus - (int64_t)(jneNotMinus + 4)));
+    // if c == '+' just ++rsi
+    emitU8(text, 0x3C); emitU8(text, (uint8_t)'+');
+    size_t jneNotPlus = emitJccRel32Placeholder(text, 0x5); // JNE
+    emitU8(text, 0x48); emitU8(text, 0xFF); emitU8(text, 0xC6); // inc rsi
+    size_t afterSign = text[0].size;
+    patchRel32(text, jneNotPlus, (int32_t)((int64_t)afterSign - (int64_t)(jneNotPlus + 4)));
+    patchRel32(text, jmpAfterSign, (int32_t)((int64_t)afterSign - (int64_t)(jmpAfterSign + 4)));
+
+    // digit_loop:
+    size_t digitLoop = text[0].size;
+    emitCmpRegReg(text, REG_RSI, REG_R9);
+    size_t jgeFinishFromDigits = emitJccRel32Placeholder(text, 0xD); // JGE
+    // c = *rsi
+    emitU8(text, 0x0F); emitU8(text, 0xB6); emitU8(text, 0x06);
+    // if c < '0' break
+    emitU8(text, 0x3C); emitU8(text, (uint8_t)'0');
+    size_t jlFinish = emitJccRel32Placeholder(text, 0xC); // JL
+    // if c > '9' break
+    emitU8(text, 0x3C); emitU8(text, (uint8_t)'9');
+    size_t jgFinish = emitJccRel32Placeholder(text, 0xF); // JG
+    // digit = c - '0'  (sub al, imm8)
+    emitU8(text, 0x2C); emitU8(text, (uint8_t)'0');
+    // movzx edx, al
+    emitU8(text, 0x0F); emitU8(text, 0xB6); emitU8(text, 0xD0);
+    // acc *= 10
+    emitMovRegImm64Const(text, REG_R11, 10);
+    emitIMulRegReg(text, REG_R8, REG_R11);
+    // acc += digit
+    emitAddRegReg(text, REG_R8, REG_RDX);
+    // ++rsi
+    emitU8(text, 0x48); emitU8(text, 0xFF); emitU8(text, 0xC6); // inc rsi
+    size_t jmpBackDigits = emitJmpRel32Placeholder(text);
+
+    // finish:
+    size_t finish = text[0].size;
+    patchRel32(text, jgeFinishFromWs,    (int32_t)((int64_t)finish - (int64_t)(jgeFinishFromWs + 4)));
+    patchRel32(text, jgeFinishFromSign,  (int32_t)((int64_t)finish - (int64_t)(jgeFinishFromSign + 4)));
+    patchRel32(text, jgeFinishFromDigits,(int32_t)((int64_t)finish - (int64_t)(jgeFinishFromDigits + 4)));
+    patchRel32(text, jlFinish,           (int32_t)((int64_t)finish - (int64_t)(jlFinish + 4)));
+    patchRel32(text, jgFinish,           (int32_t)((int64_t)finish - (int64_t)(jgFinish + 4)));
+    patchRel32(text, jmpBackDigits,      (int32_t)((int64_t)digitLoop - (int64_t)(jmpBackDigits + 4)));
+
+    // move acc into rax and apply sign: rax *= r10
+    emitMovRegReg(text, REG_RAX, REG_R8);
+    emitIMulRegReg(text, REG_RAX, REG_R10);
+    emitLeave(text);
+    emitRet(text);
+
+    // return_zero:
+    size_t returnZero = text[0].size;
+    patchRel32(text, jleReturnZero, (int32_t)((int64_t)returnZero - (int64_t)(jleReturnZero + 4)));
+    emitMovRegImm64Const(text, REG_RAX, 0);
     emitLeave(text);
     emitRet(text);
 }

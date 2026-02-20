@@ -25,53 +25,53 @@ arithSuite(x, y) {
 }
 
 main() {
-    print(2 + 3 * 4);
+    __print(2 + 3 * 4);
 
     mem[0] = &add;
-    print(mem[0](mem[0](1, 2), 3));
-    print(mem[0](5, 6));
+    __print(mem[0](mem[0](1, 2), 3));
+    __print(mem[0](5, 6));
 
     mem[0] = &mul;
-    print(mem[0](5, 6));
+    __print(mem[0](5, 6));
 
     mem[0] = getAdd();
-    print(mem[0](7, 8));
+    __print(mem[0](7, 8));
 
-    print(callViaMem(&add, 9, 10));
+    __print(callViaMem(&add, 9, 10));
 
     mem[1] = 20;
     mem[2] = 3;
     mem[3] = 4;
 
     mem[5] = 123;
-    print(mem[5]);
+    __print(mem[5]);
 
     mem[5] = 0 - 7;
-    print(mem[5]);
-    print(0 - mem[2]);
+    __print(mem[5]);
+    __print(0 - mem[2]);
 
-    print(divi(100, 3));
-    print(modi(100, 3));
+    __print(divi(100, 3));
+    __print(modi(100, 3));
 
-    print(arithSuite(17, 5));
+    __print(arithSuite(17, 5));
 
     // >6 arguments (stack arguments test)
-    print(sum8(1, 2, 3, 4, 5, 6, 7, 8));
+    __print(sum8(1, 2, 3, 4, 5, 6, 7, 8));
 
     mem[6] = &add;
     mem[7] = &sub;
-    print(mem[6](50, 1));
-    print(mem[7](50, 1));
+    __print(mem[6](50, 1));
+    __print(mem[7](50, 1));
 
     mem[8] = callViaMem(mem[6], 1, 2);
-    print(mem[8]);
+    __print(mem[8]);
 
     mem[0] = &add;
     result = 0;
     result = result + 1;
     result = result + mem[1];
     result = result + mem[0](1, 2);
-    print(result);
+    __print(result);
     return result;
 }
 

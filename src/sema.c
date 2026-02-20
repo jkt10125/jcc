@@ -102,8 +102,12 @@ int semaCheck(Program *p) {
     // collect global function names
     Def *funcs = NULL;
     for (Function *ff = p->functions; ff; ff = ff->next) addDef(&funcs, ff->name);
-    // add builtin 'print' to funcs
-    addDef(&funcs, "print");
+    // runtime-provided helpers callable from stdlib
+    addDef(&funcs, "rt_put_int");
+    addDef(&funcs, "rt_get_int");
+    addDef(&funcs, "rt_exit");
+    // internal compiler-lowered helpers
+    addDef(&funcs, "__mem_store");
     addDef(&funcs, "__index_store");
 
     for (Function *f = p->functions; f; f=f->next) {

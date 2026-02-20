@@ -5,7 +5,9 @@
 
 typedef struct {
     size_t startOffset;
-    size_t printIntOffset;
+    size_t putIntOffset;
+    size_t getIntOffset;
+    size_t exitOffset;
 } RuntimeOffsets;
 
 void emitRuntime(ByteBuf *text, PatchList *patches, RuntimeOffsets *outOffsets);
