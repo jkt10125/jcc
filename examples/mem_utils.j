@@ -1,5 +1,8 @@
 main() {
     a0 = __read_int();
+
+    a0 = 22 / a0;
+
     a1 = 22;
     a2 = 33;
 
@@ -12,13 +15,13 @@ main() {
     dst_ptr = &b2;
 
     __mem_copy_words(dst_ptr, src_ptr, 3);
-    __print(dst_ptr[2]);
-    __print(dst_ptr[1]);
-    __print(dst_ptr[0]);
+    __print_int(dst_ptr[2]);
+    __print_int(dst_ptr[1]);
+    __print_int(dst_ptr[0]);
 
-    __print(__mem_compare_words(src_ptr, dst_ptr, 3));
+    __print_int(__mem_compare_words(src_ptr, dst_ptr, 3));
     dst_ptr[1] = 99;
-    __print(__mem_compare_words(src_ptr, dst_ptr, 3));
+    __print_int(__mem_compare_words(src_ptr, dst_ptr, 3));
     return 0;
 }
 

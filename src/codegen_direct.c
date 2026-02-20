@@ -137,6 +137,26 @@ static void genBinOp(ByteBuf *text, PatchList *patches, Expr *e, VarNode *locals
         if (op == BIN_MOD) emitMovRegReg(text, REG_RAX, REG_RDX);
         return;
     }
+    if (op == BIN_BAND) {
+        emitAndRegReg(text, REG_RAX, REG_R11);
+        return;
+    }
+    if (op == BIN_BOR) {
+        emitOrRegReg(text, REG_RAX, REG_R11);
+        return;
+    }
+    if (op == BIN_BXOR) {
+        emitXorRegReg(text, REG_RAX, REG_R11);
+        return;
+    }
+    if (op == BIN_SHL || op == BIN_SHR) {
+        // right is shift count; hardware uses CL
+        emitMovRegReg(text, REG_RCX, REG_RAX);
+        emitMovRegReg(text, REG_RAX, REG_R11);
+        if (op == BIN_SHL) emitShlRegCl(text, REG_RAX);
+        else emitShrRegCl(text, REG_RAX);
+        return;
+    }
     // comparisons: result is 0 or 1 in rax
     if (op == BIN_EQ || op == BIN_NEQ || op == BIN_LT || op == BIN_GT || op == BIN_LE || op == BIN_GE) {
         // left in r11, right in rax
@@ -428,7 +448,10 @@ int emitDirectElfProgram(const char *outPath, Program *prog, int memEntries) {
     symbolSet(&symbols, "_start", (0x400000 + 0x1000) + rtOff.startOffset);
     symbolSet(&symbols, "rt_put_int", (0x400000 + 0x1000) + rtOff.putIntOffset);
     symbolSet(&symbols, "rt_get_int", (0x400000 + 0x1000) + rtOff.getIntOffset);
+    symbolSet(&symbols, "rt_put_char", (0x400000 + 0x1000) + rtOff.putCharOffset);
+    symbolSet(&symbols, "rt_read_char", (0x400000 + 0x1000) + rtOff.readCharOffset);
     symbolSet(&symbols, "rt_exit", (0x400000 + 0x1000) + rtOff.exitOffset);
+    symbolSet(&symbols, "rt_str_buf_ptr", (0x400000 + 0x1000) + rtOff.strBufPtrOffset);
 
     // collect function signatures for arity padding
     fnSigList = NULL;
@@ -436,7 +459,10 @@ int emitDirectElfProgram(const char *outPath, Program *prog, int memEntries) {
     // runtime helper signatures (so calls don't get padded up to maxParamCount)
     addFnSig("rt_put_int", 1);
     addFnSig("rt_get_int", 0);
+    addFnSig("rt_put_char", 1);
+    addFnSig("rt_read_char", 0);
     addFnSig("rt_exit", 1);
+    addFnSig("rt_str_buf_ptr", 0);
     for (Function *f = prog[0].functions; f; f = f[0].next) {
         const char *symName = (strcmp(f[0].name, "main") == 0) ? "lang_main" : f[0].name;
         addFnSig(symName, f[0].paramCount);
@@ -452,16 +478,19 @@ int emitDirectElfProgram(const char *outPath, Program *prog, int memEntries) {
         genFunctionBytes(&text, &patches, f);
     }
 
-    // data: [mem (u64)] [memArray (i64[memEntries])]
-    uint64_t dataSize = 8ull + (uint64_t)memEntries * 8ull;
+    // data: [mem (u64)] [memArray (i64[memEntries])] [rt_str_buf (bytes)]
+    uint64_t rtStrBufSize = 4097ull;
+    uint64_t dataSize = 8ull + (uint64_t)memEntries * 8ull + rtStrBufSize;
     byteBufReserve(&data, dataSize);
     for (uint64_t i=0;i<dataSize;i++) emitU8(&data, 0);
 
     uint64_t dataVaddr = computeDataVaddr(text.size);
     uint64_t memVaddr = dataVaddr;
     uint64_t memArrayVaddr = dataVaddr + 8;
+    uint64_t rtStrBufVaddr = memArrayVaddr + (uint64_t)memEntries * 8ull;
     symbolSet(&symbols, "mem", memVaddr);
     symbolSet(&symbols, "memArray", memArrayVaddr);
+    symbolSet(&symbols, "rt_str_buf", rtStrBufVaddr);
 
     // initialize mem = memArrayVaddr
     memcpy(&data.data[0], &memArrayVaddr, 8);

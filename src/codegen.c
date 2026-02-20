@@ -38,6 +38,27 @@ static void genBinOp(FILE *out, Expr *e, VarList *locals) {
         case BIN_MOD:
             fprintf(out, "    movq %%rax, %%rdi\n    movq %%rbx, %%rax\n    cqto\n    idivq %%rdi\n    movq %%rdx, %%rax\n");
             break;
+        case BIN_BAND:
+            fprintf(out, "    andq %%rbx, %%rax\n");
+            break;
+        case BIN_BOR:
+            fprintf(out, "    orq %%rbx, %%rax\n");
+            break;
+        case BIN_BXOR:
+            fprintf(out, "    xorq %%rbx, %%rax\n");
+            break;
+        case BIN_SHL:
+            // rax = left (rbx) shl right (rax)
+            fprintf(out, "    movq %%rax, %%rcx\n");
+            fprintf(out, "    movq %%rbx, %%rax\n");
+            fprintf(out, "    shlq %%cl, %%rax\n");
+            break;
+        case BIN_SHR:
+            // logical right shift (zero-fill)
+            fprintf(out, "    movq %%rax, %%rcx\n");
+            fprintf(out, "    movq %%rbx, %%rax\n");
+            fprintf(out, "    shrq %%cl, %%rax\n");
+            break;
         default:
             fprintf(out, "    movq $0, %%rax\n");
             break;

@@ -1,6 +1,6 @@
 # Minimalist 64-bit Word Language — Detailed Documentation
 
-This document describes the language defined in `CompilerDesign.txt`, plus the `print(x)` builtin that exists in the current `jcc` implementation.
+This document describes the language defined in `CompilerDesign.txt`, plus the pragmatic features that exist in the current `jcc` implementation (notably: a prepended standard library and bitwise operators).
 
 The language is intentionally small: **one signed 64-bit integer type** and a **single global memory array** addressed by index.
 
@@ -12,6 +12,8 @@ The language is intentionally small: **one signed 64-bit integer type** and a **
   - 1.1 One type: signed 64-bit `int`
   - 1.2 Program = functions only
   - 1.3 Global memory: `mem`
+  - 1.4 Standard library (`stdlib/`)
+  - 1.5 Strings (null-terminated)
 - **2. Names, variables, and scoping**
   - 2.1 Parameters and locals
   - 2.2 “Created on first assignment”
@@ -30,19 +32,23 @@ The language is intentionally small: **one signed 64-bit integer type** and a **
 - **5. Expressions**
   - 5.1 Literals and identifiers
   - 5.2 Arithmetic operators
-  - 5.3 Comparisons
-  - 5.4 Parentheses and precedence
-  - 5.5 Array indexing: `x[i]`
-  - 5.6 Address-of: `&name`
-  - 5.7 Function calls (direct and indirect)
-  - 5.8 Calling convention notes (how args are passed)
-  - 5.9 Argument count behavior (too few / too many)
+  - 5.3 Bitwise operators (`&`, `|`, `^`, `<<`, `>>`)
+  - 5.4 Comparisons
+  - 5.5 Parentheses and precedence
+  - 5.6 Array indexing: `x[i]`
+  - 5.7 Address-of: `&name`
+  - 5.8 Function calls (direct and indirect)
+  - 5.9 Calling convention notes (how args are passed)
+  - 5.10 Argument count behavior (too few / too many)
 - **6. Function pointers**
   - 6.1 Taking function addresses
   - 6.2 Storing in locals / `mem`
   - 6.3 Indirect calls
-- **7. Builtin I/O**
-  - 7.1 `print(x)`
+- **7. Standard library I/O**
+  - 7.1 `__print_int(x)`
+  - 7.2 `__print_char(x)`
+  - 7.3 `__read_int()`
+  - 7.4 `__exit(code)`
 - **8. Examples**
   - 8.1 Minimal program
   - 8.2 Using `mem` as a table
@@ -100,6 +106,51 @@ In the current `jcc` implementation, `mem` is modeled as:
 - A global 64-bit value `mem` that holds the base address of `memArray`
 - `memArray` is a static data segment array of `MEM_ENTRIES` elements
 - `mem[i]` means load/store at address `(mem + i*8)`
+
+---
+
+### 1.4 Standard library (`stdlib/`)
+
+`jcc` automatically prepends the standard library sources from the `stdlib/` folder to the user program *before parsing*.
+
+Practical implications:
+
+- Stdlib functions are written in the same language, live under `stdlib/*.j`, and are compiled like normal code.
+- Stdlib functions use a `__` prefix by convention (for example: `__print_int`, `__read_int`, `__mem_copy_words`).
+- The runtime (embedded assembly bytes) exposes a few low-level helper functions (currently `rt_put_int`, `rt_get_int`, `rt_exit`) that stdlib calls; user code typically calls the `__...` wrappers instead.
+
+---
+
+### 1.5 Strings (null-terminated)
+
+`jcc` currently supports **null-terminated byte strings** via the standard library.
+
+- A “string” is just an `int64` pointer to a byte buffer in memory.
+- The string ends at the first `0` byte (`'\\0'`).
+- There are no string literals yet; you obtain strings from input.
+
+Stdlib functions:
+
+- `__read_str()` reads a line from stdin (stops at newline), writes a terminating `0` byte, and returns a pointer to the buffer.
+  - Max length: 4096 bytes (longer input is truncated).
+  - The returned pointer refers to a **single static runtime buffer**; a later `__read_str()` call overwrites it.
+- `__print_str(ptr)` prints bytes starting at `ptr` until it sees a `0` byte.
+- `__str_get_byte(ptr, idx)` returns the byte at the given index as an integer `0..255`.
+  - If `idx` is past the end of the string (terminator), it returns `0`.
+
+Input primitive:
+
+- `__read_char()` reads one byte from stdin and returns `0..255`, or `-1` on EOF/error.
+
+Example:
+
+```c
+main() {
+    p = __read_str();
+    __print_str(p);
+    return 0;
+}
+```
 
 ---
 
@@ -229,7 +280,7 @@ Any expression can be used as a statement by adding `;`.
 Most commonly used for calls:
 
 ```c
-print(123);
+__print_int(123);
 f(1, 2);
 mem[0](5, 6); // indirect call as a statement
 ```
@@ -247,12 +298,14 @@ Blocks group statements:
 
 They do not create a new variable scope (2.4).
 
-### 4.5 Control flow (`if`, `while`) (language spec)
+### 4.5 Control flow (`if`, `else`, `while`)
 
-The language specification includes:
+The language supports:
 
-- `if (expr) statement` optionally followed by `else statement`
-- `while (expr) statement`
+- `if (expr) { ... }` optionally followed by `else { ... }`
+- `while (expr) { ... }`
+
+Note: the current `jcc` parser requires the body of `if`, `else`, and `while` to be a block `{ ... }`.
 
 Truthiness is based on integer values:
 
@@ -267,7 +320,7 @@ main() {
     while (x < 5) {
         x = x + 1;
     }
-    if (x == 5) return 1;
+    if (x == 5) { return 1; }
     return 0;
 }
 ```
@@ -294,14 +347,43 @@ Supported arithmetic:
 Examples:
 
 ```c
-print(7 + 8);     // 15
-print(7 - 8);     // -1
-print(7 * 8);     // 56
-print(100 / 3);   // 33 (integer division)
-print(100 % 3);   // 1
+__print_int(7 + 8);     // 15
+__print_int(7 - 8);     // -1
+__print_int(7 * 8);     // 56
+__print_int(100 / 3);   // 33 (integer division)
+__print_int(100 % 3);   // 1
 ```
 
-### 5.3 Comparisons
+### 5.3 Bitwise operators (`&`, `|`, `^`, `<<`, `>>`)
+
+Supported bitwise operations:
+
+- `&` bitwise AND
+- `|` bitwise OR
+- `^` bitwise XOR
+- `<<` left shift
+- `>>` logical right shift (zero-fill)
+
+Notes:
+
+- All values are still `int64`; bitwise operators act on the 64-bit two’s-complement bit pattern.
+- `>>` is **logical** right shift in `jcc` (it uses the CPU `shr` instruction, so high bits fill with 0).
+- Shift counts use only the low 6 bits (hardware behavior), effectively `count & 63`.
+
+Examples:
+
+```c
+main() {
+    __print_int(5 & 3);      // 1
+    __print_int(5 | 2);      // 7
+    __print_int(5 ^ 1);      // 4
+    __print_int(1 << 3);     // 8
+    __print_int(-1 >> 1);    // 9223372036854775807
+    return 0;
+}
+```
+
+### 5.4 Comparisons
 
 The language specification includes:
 
@@ -325,17 +407,21 @@ Typical precedence (high to low):
 1. Postfix: calls `f(...)`, indexing `x[i]`
 2. Multiplicative: `* / %`
 3. Additive: `+ -`
-4. Comparisons
-5. Assignment `=`
+4. Shifts: `<< >>`
+5. Bitwise AND: `&`
+6. Bitwise XOR: `^`
+7. Bitwise OR: `|`
+8. Comparisons (`== != < > <= >=`)
+9. Assignment `=`
 
 Example:
 
 ```c
-print(2 + 3 * 4);     // 14
-print((2 + 3) * 4);   // 20
+__print_int(2 + 3 * 4);     // 14
+__print_int((2 + 3) * 4);   // 20
 ```
 
-### 5.5 Array indexing: `x[i]`
+### 5.6 Array indexing: `x[i]`
 
 Indexing reads an element:
 
@@ -365,9 +451,9 @@ That means you can store an address into a local and then index it:
 main() {
     x = 123;
     p = &x;      // p is an int64 address
-    print(p[0]); // prints 123
+    __print_int(p[0]); // prints 123
     p[0] = 999;  // writes to x through the pointer
-    print(x);    // prints 999
+    __print_int(x);  // prints 999
     return 0;
 }
 ```
@@ -383,7 +469,7 @@ In the current `jcc` implementation:
 
 This is intentionally low-level. Indexing an invalid address or going out-of-bounds is undefined behavior.
 
-### 5.6 Address-of: `&name`
+### 5.7 Address-of: `&name`
 
 The address-of operator produces an integer “address”:
 
@@ -404,13 +490,22 @@ main() {
     b = 20;
     p = &b;
     p[0] = 777;
-    print(a);
-    print(b); // prints 777
+    __print_int(a);
+    __print_int(b); // prints 777
     return 0;
 }
 ```
 
-### 5.7 Function calls (direct and indirect)
+#### 5.7.1 `&` disambiguation (address-of vs bitwise AND)
+
+The token `&` has two meanings:
+
+- **Unary** `&name` at the start of a primary expression means **address-of**.
+- **Binary** `expr & expr` between two expressions means **bitwise AND**.
+
+The parser disambiguates them based on position in the grammar (expression-start vs infix operator).
+
+### 5.8 Function calls (direct and indirect)
 
 Direct call:
 
@@ -432,7 +527,7 @@ mem[0] = &add;
 result = mem[0](5, 10);
 ```
 
-### 5.8 Calling convention notes (how args are passed)
+### 5.9 Calling convention notes (how args are passed)
 
 This section explains runtime behavior of calls. It is not part of the surface syntax, but it matters for performance and for understanding “too many / too few arguments”.
 
@@ -443,7 +538,7 @@ The direct-ELF backend in `jcc` follows Linux x86_64 System V calling convention
 - **Args 7+** are passed on the stack.
 - Return value is in `RAX`.
 
-### 5.9 Argument count behavior (too few / too many)
+### 5.10 Argument count behavior (too few / too many)
 
 The language spec does not explicitly define arity mismatch behavior. The current `jcc` makes it **predictable**:
 
@@ -461,9 +556,9 @@ Example:
 add3(a, b, c) { return a + b + c; }
 
 main() {
-    print(add3(5));      // prints 5 (treated as add3(5,0,0))
+    __print_int(add3(5));      // prints 5 (treated as add3(5,0,0))
     mem[0] = &add3;
-    print(mem[0](7));    // prints 7 (pads missing args to 0)
+    __print_int(mem[0](7));    // prints 7 (pads missing args to 0)
     return 0;
 }
 ```
@@ -504,25 +599,43 @@ mem[0](1, 2);  // common pattern
 
 ---
 
-## 7. Builtin I/O
+## 7. Standard library I/O
 
-### 7.1 `print(x)`
+### 7.1 `__print_int(x)`
 
-`print(x);` prints the signed 64-bit integer `x` followed by a newline.
+`__print_int(x);` prints the signed 64-bit integer `x` followed by a newline.
 
 Example:
 
 ```c
 main() {
     x = -7;
-    print(x);
+    __print_int(x);
     return 0;
 }
 ```
 
-In the current `jcc` direct-ELF backend, printing is implemented using Linux syscalls:
+In the current `jcc` direct-ELF backend, printing is implemented via a runtime helper (`rt_put_int`) that uses Linux syscalls:
 
 - `sys_write(1, buf, len)` to stdout
+
+### 7.2 `__print_char(x)`
+
+`__print_char(x);` prints the low 8 bits of `x` as a single byte to stdout, with **no newline**.
+
+This is implemented via a runtime helper (`rt_put_char`) that performs `sys_write(1, &byte, 1)`.
+
+### 7.3 `__read_int()`
+
+`__read_int();` reads a signed decimal integer from stdin and returns it.
+
+The current `jcc` implementation reads from stdin using a runtime helper (`rt_get_int`) that uses:
+
+- `sys_read(0, buf, n)` from stdin
+
+### 7.4 `__exit(code)`
+
+`__exit(code);` terminates the process with the given exit code via a runtime helper (`rt_exit`).
 
 ---
 
@@ -542,7 +655,7 @@ main() {
 main() {
     mem[0] = 10;
     mem[1] = 20;
-    print(mem[0] + mem[1]); // prints 30
+    __print_int(mem[0] + mem[1]); // prints 30
     return mem[0] + mem[1];
 }
 ```
@@ -554,7 +667,7 @@ add(a, b) { return a + b; }
 
 main() {
     mem[0] = &add;
-    print(mem[0](5, 10)); // prints 15
+    __print_int(mem[0](5, 10)); // prints 15
     return mem[0](5, 10);
 }
 ```
@@ -565,12 +678,12 @@ Recursion is allowed by the spec.
 
 ```c
 fact(n) {
-    if (n <= 1) return 1;
+    if (n <= 1) { return 1; }
     return n * fact(n - 1);
 }
 
 main() {
-    print(fact(5)); // 120
+    __print_int(fact(5)); // 120
     return fact(5);
 }
 ```
@@ -608,18 +721,18 @@ As of the current implementation:
     - `&x` for locals (address-of local slot)
     - `p[i]` load and `p[i] = v` store (pointer indexing)
   - `+ - * / %` arithmetic
+  - bitwise operators: `& | ^ << >>` (`>>` is logical right shift)
   - comparison operators (`== != < > <= >=`)
   - `return`
   - blocks `{ ... }` (no new scope; function-level locals)
-  - `if (...) ... else ...`
-  - `while (...) ...`
-  - `print(x)` builtin
+  - `if (...) { ... } else { ... }` (block bodies required by parser)
+  - `while (...) { ... }` (block body required by parser)
+  - standard library auto-prelude from `stdlib/` (functions like `__print_int`, `__print_char`, `__read_int`, `__exit`)
   - `//` line comments
   - Calls:
     - more than 6 arguments supported (stack arguments)
     - missing arguments padded with 0 (see 5.9)
 - **Not yet implemented** (spec exists, compiler work may be needed):
-  - None of the essential items in `CompilerDesign.txt` remain missing.\n+    Future work is quality-of-implementation (better error messages, more static checks, optimizations, more tests).
+  - None of the essential items in `CompilerDesign.txt` remain missing. Future work is quality-of-implementation (better error messages, more static checks, optimizations, more tests).
 
-If you want, we can extend `jcc` step-by-step to cover the full `CompilerDesign.txt` feature set while keeping the implementation minimalist.
 

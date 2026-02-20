@@ -4,6 +4,9 @@
 // _start: call lang_main; exit(return)
 // rt_put_int: syscall-only decimal print with newline
 // rt_get_int: syscall-only read + parse signed decimal from stdin
+// (old string syscall helpers removed; string helpers live in stdlib now)
+// rt_read_char: syscall-only read one byte
+// rt_str_buf_ptr: returns pointer to the static string buffer
 // rt_exit: syscall-only process exit
 //
 // Notes:
@@ -145,6 +148,50 @@ void emitRuntime(ByteBuf *text, PatchList *patches, RuntimeOffsets *outOffsets) 
     emitLeave(text);
     emitRet(text);
 
+    // rt_put_char(x):
+    // prints the low byte of x (x in RDI) to stdout, no newline.
+    outOffsets[0].putCharOffset = text[0].size;
+    // sub rsp, 8
+    emitSubRspImm32(text, 8);
+    // mov byte [rsp], dil : 40 88 3C 24
+    emitU8(text, 0x40); emitU8(text, 0x88); emitU8(text, 0x3C); emitU8(text, 0x24);
+    // sys_write(1, rsp, 1)
+    emitMovRegImm64Const(text, REG_RAX, 1);
+    emitMovRegImm64Const(text, REG_RDI, 1);
+    emitMovRegReg(text, REG_RSI, REG_RSP);
+    emitMovRegImm64Const(text, REG_RDX, 1);
+    emitSyscall(text);
+    // add rsp, 8
+    emitAddRspImm32(text, 8);
+    emitMovRegImm64Const(text, REG_RAX, 0);
+    emitRet(text);
+
+    // rt_read_char():
+    // returns 0..255 for a byte, or -1 on EOF/error.
+    outOffsets[0].readCharOffset = text[0].size;
+    // sub rsp, 8
+    emitSubRspImm32(text, 8);
+    // sys_read(0, rsp, 1)
+    emitMovRegImm64Const(text, REG_RAX, 0);
+    emitMovRegImm64Const(text, REG_RDI, 0);
+    emitMovRegReg(text, REG_RSI, REG_RSP);
+    emitMovRegImm64Const(text, REG_RDX, 1);
+    emitSyscall(text);
+    // if (rax == 1) return byte; else return -1
+    emitCmpRegImm8(text, REG_RAX, 1);
+    size_t jneEof = emitJccRel32Placeholder(text, 0x5); // JNE
+    // movzx eax, byte [rsp]
+    emitU8(text, 0x0F); emitU8(text, 0xB6); emitU8(text, 0x04); emitU8(text, 0x24);
+    // add rsp, 8
+    emitAddRspImm32(text, 8);
+    emitRet(text);
+    // eof:
+    size_t eof = text[0].size;
+    patchRel32(text, jneEof, (int32_t)((int64_t)eof - (int64_t)(jneEof + 4)));
+    emitAddRspImm32(text, 8);
+    emitMovRegImm64Const(text, REG_RAX, (uint64_t)(int64_t)-1);
+    emitRet(text);
+
     // rt_exit:
     outOffsets[0].exitOffset = text[0].size;
     emitMovRegImm64Const(text, REG_RAX, 60);
@@ -281,6 +328,12 @@ void emitRuntime(ByteBuf *text, PatchList *patches, RuntimeOffsets *outOffsets) 
     patchRel32(text, jleReturnZero, (int32_t)((int64_t)returnZero - (int64_t)(jleReturnZero + 4)));
     emitMovRegImm64Const(text, REG_RAX, 0);
     emitLeave(text);
+    emitRet(text);
+
+    // rt_str_buf_ptr():
+    // returns pointer to the static buffer rt_str_buf.
+    outOffsets[0].strBufPtrOffset = text[0].size;
+    emitMovRegImm64Patch(text, patches, SEG_TEXT, REG_RAX, "rt_str_buf", 0);
     emitRet(text);
 }
 

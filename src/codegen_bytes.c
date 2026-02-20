@@ -158,6 +158,39 @@ void emitSubRegReg(ByteBuf *b, Reg dst, Reg src) {
     emitU8(b, 0x29);
     emitModRm(b, 3, src & 7, dst & 7);
 }
+void emitAndRegReg(ByteBuf *b, Reg dst, Reg src) {
+    // and r/m64, r64 : 48 21 /r
+    int r = (src >> 3) & 1;
+    int bb = (dst >> 3) & 1;
+    emitRexW(b, r, 0, bb);
+    emitU8(b, 0x21);
+    emitModRm(b, 3, src & 7, dst & 7);
+}
+void emitOrRegReg(ByteBuf *b, Reg dst, Reg src) {
+    // or r/m64, r64 : 48 09 /r
+    int r = (src >> 3) & 1;
+    int bb = (dst >> 3) & 1;
+    emitRexW(b, r, 0, bb);
+    emitU8(b, 0x09);
+    emitModRm(b, 3, src & 7, dst & 7);
+}
+void emitXorRegReg(ByteBuf *b, Reg dst, Reg src) {
+    // xor r/m64, r64 : 48 31 /r
+    int r = (src >> 3) & 1;
+    int bb = (dst >> 3) & 1;
+    emitRexW(b, r, 0, bb);
+    emitU8(b, 0x31);
+    emitModRm(b, 3, src & 7, dst & 7);
+}
+static void emitShiftRegCl(ByteBuf *b, Reg dst, int subCode) {
+    // shift r/m64, cl : 48 D3 /subCode
+    int bb = (dst >> 3) & 1;
+    emitRexW(b, 0, 0, bb);
+    emitU8(b, 0xD3);
+    emitModRm(b, 3, subCode & 7, dst & 7);
+}
+void emitShlRegCl(ByteBuf *b, Reg dst) { emitShiftRegCl(b, dst, 4); }
+void emitShrRegCl(ByteBuf *b, Reg dst) { emitShiftRegCl(b, dst, 5); }
 void emitIMulRegReg(ByteBuf *b, Reg dst, Reg src) {
     // imul r64, r/m64 : 48 0F AF /r (dst is reg, src is r/m)
     int r = (dst >> 3) & 1;

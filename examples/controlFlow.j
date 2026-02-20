@@ -8,19 +8,19 @@ main() {
     }
 
     if (sum == 10) {
-        __print(111);
+        __print_int(111);
     } else {
-        __print(222);
+        __print_int(222);
     }
 
     if (sum != 10) {
-        __print(333);
+        __print_int(333);
     } else {
-        __print(444);
+        __print_int(444);
     }
 
     // sum should be 10
-    __print(sum);
+    __print_int(sum);
     return sum;
 }
 

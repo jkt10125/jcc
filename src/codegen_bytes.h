@@ -82,6 +82,11 @@ void emitLeaRegBaseIndexScaleDisp(ByteBuf *b, Reg dst, Reg base, Reg index, int 
 void emitAddRegReg(ByteBuf *b, Reg dst, Reg src);
 void emitSubRegReg(ByteBuf *b, Reg dst, Reg src);
 void emitIMulRegReg(ByteBuf *b, Reg dst, Reg src);
+void emitAndRegReg(ByteBuf *b, Reg dst, Reg src);
+void emitOrRegReg(ByteBuf *b, Reg dst, Reg src);
+void emitXorRegReg(ByteBuf *b, Reg dst, Reg src);
+void emitShlRegCl(ByteBuf *b, Reg dst);
+void emitShrRegCl(ByteBuf *b, Reg dst);
 void emitCqo(ByteBuf *b);
 void emitIDivReg(ByteBuf *b, Reg divisor);
 void emitCallReg(ByteBuf *b, Reg reg);

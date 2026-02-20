@@ -1,6 +1,6 @@
 main() {
     x = __read_int();
-    __print(x);
+    __print_int(x);
     return 0;
 }
 

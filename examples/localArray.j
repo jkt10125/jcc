@@ -13,12 +13,12 @@ main() {
     p[1] = 200;
     p[2] = 300;
 
-    __print(x);
-    __print(y);
-    __print(z);
-    __print(p[1]);
+    __print_int(x);
+    __print_int(y);
+    __print_int(z);
+    __print_int(p[1]);
 
-    __print(x + y + z);
+    __print_int(x + y + z);
 
     return x + y + z;
 }

@@ -1,9 +1,4 @@
-fact(n) {
-    if (n == 0) { return 1; }
-    return n * fact(n - 1);
-}
-
 main() {
-    __print(fact(5));
-    return 0;
+    a = __read_int();
+    __print_int(a);
 }

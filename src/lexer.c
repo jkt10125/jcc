@@ -78,12 +78,16 @@ Token lexerNext(Lexer *lx) {
             else setToken(lx, TOK_ASSIGN,"=",0);
             break;
         case '&': setToken(lx, TOK_AMP,"&",0); break;
+        case '|': setToken(lx, TOK_PIPE,"|",0); break;
+        case '^': setToken(lx, TOK_CARET,"^",0); break;
         case '<':
-            if (lx->src[lx->pos]=='=') { lx->pos++; setToken(lx, TOK_LE,"<=",0); }
+            if (lx->src[lx->pos]=='<') { lx->pos++; setToken(lx, TOK_SHL,"<<",0); }
+            else if (lx->src[lx->pos]=='=') { lx->pos++; setToken(lx, TOK_LE,"<=",0); }
             else setToken(lx, TOK_LT,"<",0);
             break;
         case '>':
-            if (lx->src[lx->pos]=='=') { lx->pos++; setToken(lx, TOK_GE,">=",0); }
+            if (lx->src[lx->pos]=='>') { lx->pos++; setToken(lx, TOK_SHR,">>",0); }
+            else if (lx->src[lx->pos]=='=') { lx->pos++; setToken(lx, TOK_GE,">=",0); }
             else setToken(lx, TOK_GT,">",0);
             break;
         case '!':

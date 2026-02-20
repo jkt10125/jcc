@@ -105,7 +105,10 @@ int semaCheck(Program *p) {
     // runtime-provided helpers callable from stdlib
     addDef(&funcs, "rt_put_int");
     addDef(&funcs, "rt_get_int");
+    addDef(&funcs, "rt_put_char");
+    addDef(&funcs, "rt_read_char");
     addDef(&funcs, "rt_exit");
+    addDef(&funcs, "rt_str_buf_ptr");
     // internal compiler-lowered helpers
     addDef(&funcs, "__mem_store");
     addDef(&funcs, "__index_store");

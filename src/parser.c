@@ -133,8 +133,49 @@ static Expr *parseAddSub(Parser *p) {
     return e;
 }
 
-static Expr *parseCompare(Parser *p) {
+static Expr *parseShift(Parser *p) {
     Expr *e = parseAddSub(p);
+    while (p->cur.kind==TOK_SHL || p->cur.kind==TOK_SHR) {
+        BinOpKind op = (p->cur.kind==TOK_SHL)?BIN_SHL:BIN_SHR;
+        next(p);
+        Expr *r = parseAddSub(p);
+        e = newBinOpExpr(op, e, r);
+    }
+    return e;
+}
+
+static Expr *parseBitAnd(Parser *p) {
+    Expr *e = parseShift(p);
+    while (p->cur.kind==TOK_AMP) {
+        next(p);
+        Expr *r = parseShift(p);
+        e = newBinOpExpr(BIN_BAND, e, r);
+    }
+    return e;
+}
+
+static Expr *parseBitXor(Parser *p) {
+    Expr *e = parseBitAnd(p);
+    while (p->cur.kind==TOK_CARET) {
+        next(p);
+        Expr *r = parseBitAnd(p);
+        e = newBinOpExpr(BIN_BXOR, e, r);
+    }
+    return e;
+}
+
+static Expr *parseBitOr(Parser *p) {
+    Expr *e = parseBitXor(p);
+    while (p->cur.kind==TOK_PIPE) {
+        next(p);
+        Expr *r = parseBitXor(p);
+        e = newBinOpExpr(BIN_BOR, e, r);
+    }
+    return e;
+}
+
+static Expr *parseCompare(Parser *p) {
+    Expr *e = parseBitOr(p);
     while (p->cur.kind==TOK_EQ || p->cur.kind==TOK_NEQ ||
            p->cur.kind==TOK_LT || p->cur.kind==TOK_GT ||
            p->cur.kind==TOK_LE || p->cur.kind==TOK_GE) {
@@ -146,7 +187,7 @@ static Expr *parseCompare(Parser *p) {
         else if (p->cur.kind==TOK_LE) op = BIN_LE;
         else if (p->cur.kind==TOK_GE) op = BIN_GE;
         next(p);
-        Expr *r = parseAddSub(p);
+        Expr *r = parseBitOr(p);
         e = newBinOpExpr(op, e, r);
     }
     return e;
