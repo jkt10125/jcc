@@ -621,5 +621,4 @@ As of the current implementation:
 - **Not yet implemented** (spec exists, compiler work may be needed):
   - None of the essential items in `CompilerDesign.txt` remain missing.\n+    Future work is quality-of-implementation (better error messages, more static checks, optimizations, more tests).
 
-If you want, we can extend `jcc` step-by-step to cover the full `CompilerDesign.txt` feature set while keeping the implementation minimalist.
 
