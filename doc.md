@@ -47,8 +47,9 @@ The language is intentionally small: **one signed 64-bit integer type** and a **
 - **7. Standard library I/O**
   - 7.1 `_print_int(x)`
   - 7.2 `_print_char(x)`
-  - 7.3 `_read_int()`
-  - 7.4 `_exit(code)`
+  - 7.3 `_print_hex(x)`
+  - 7.4 `_read_int()`
+  - 7.5 `_exit(code)`
 - **8. Examples**
   - 8.1 Minimal program
   - 8.2 Using `mem` as a table
@@ -351,7 +352,7 @@ main() {
 
 ### 5.1 Literals and identifiers
 
-- Integer literal: `0`, `123`, `-7`
+- Integer literal: `0`, `123`, `-7`, `0xFF`, `0x1234ABCD` (hex: `0x` or `0X` prefix)
 - Identifier: `x`, `result`, `mem`, `add`
 
 ### 5.2 Arithmetic operators
@@ -645,7 +646,21 @@ In the current `jcc` direct-ELF backend, printing is implemented via a runtime h
 
 This is implemented via a runtime helper (`rt_put_char`) that performs `sys_write(1, &byte, 1)`.
 
-### 7.3 `_read_int()`
+### 7.3 `_print_hex(x)`
+
+`_print_hex(x);` prints the signed 64-bit integer `x` in hexadecimal with a `0x` prefix and 16 hex digits, followed by a newline.
+
+Example:
+
+```c
+main() {
+    _print_hex(255);      // 0x00000000000000FF
+    _print_hex(-1);      // 0xFFFFFFFFFFFFFFFF
+    return 0;
+}
+```
+
+### 7.4 `_read_int()`
 
 `_read_int();` reads a signed decimal integer from stdin and returns it.
 
@@ -653,7 +668,7 @@ The current `jcc` implementation reads from stdin using a runtime helper (`rt_ge
 
 - `sys_read(0, buf, n)` from stdin
 
-### 7.4 `_exit(code)`
+### 7.5 `_exit(code)`
 
 `_exit(code);` terminates the process with the given exit code via a runtime helper (`rt_exit`).
 

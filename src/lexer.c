@@ -49,6 +49,26 @@ Token lexerNext(Lexer *lx) {
         else setToken(lx, TOK_IDENT, t, 0);
         return lx->cur;
     }
+    if (*s == '0' && (s[1] == 'x' || s[1] == 'X')) {
+        lx->pos += 2;
+        int start = lx->pos;
+        while (1) {
+            char c = (unsigned char)lx->src[lx->pos];
+            if (c >= '0' && c <= '9') lx->pos++;
+            else if (c >= 'a' && c <= 'f') lx->pos++;
+            else if (c >= 'A' && c <= 'F') lx->pos++;
+            else break;
+        }
+        int len = lx->pos - start;
+        int64_t val = 0;
+        if (len > 0) {
+            char *hexStr = strNDup(lx->src + start, len);
+            val = (int64_t)strtoull(hexStr, NULL, 16);
+            free(hexStr);
+        }
+        setToken(lx, TOK_NUMBER, NULL, val);
+        return lx->cur;
+    }
     if (isdigit((unsigned char)*s) || (*s=='-' && isdigit((unsigned char)s[1]))) {
         int start = lx->pos;
         if (*s=='-') lx->pos++;

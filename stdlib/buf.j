@@ -1,6 +1,6 @@
 // Packed buffer helpers.
-// ptr is an int64 pointer; elements are packed BIG-ENDIAN within each 64-bit word.
-// Byte 0 (idx 0) is MSB, so comparing two words as integers matches lexicographic byte comparison.
+// ptr is an int64 pointer; elements are packed LITTLE-ENDIAN within each 64-bit word.
+// Byte 0 (idx 0) is LSB, matching x86-64 memory layout.
 // offset: 3=u8, 2=u16, 1=u32 (elements per word = 2^offset).
 
 __buf_get(ptr, idx, offset) {
@@ -9,7 +9,7 @@ __buf_get(ptr, idx, offset) {
     bits = 8 << (3 - offset);
     offset_power_mask = (1 << bits) - 1;
     elem_in_word = idx & offset_mask;
-    bit_shift = ((1 << offset) - 1 - elem_in_word) << (6 - offset);
+    bit_shift = elem_in_word << (6 - offset);
     word = ptr[word_index];
     return (word >> bit_shift) & offset_power_mask;
 }
@@ -20,10 +20,10 @@ __buf_set(ptr, idx, val, offset) {
     bits = 8 << (3 - offset);
     offset_power_mask = (1 << bits) - 1;
     elem_in_word = idx & offset_mask;
-    bit_shift = ((1 << offset) - 1 - elem_in_word) << (6 - offset);
+    bit_shift = elem_in_word << (6 - offset);
     word = ptr[word_index];
     mask = offset_power_mask << bit_shift;
-    inv_mask = mask ^ -1;
+    inv_mask = mask ^ 0xffffffffffffffff;
     new_word = (word & inv_mask) | ((val & offset_power_mask) << bit_shift);
     ptr[word_index] = new_word;
     return 0;
@@ -86,8 +86,8 @@ _buf_memmove_u8(dst, src, count) {
     if (dst == src) { return dst; }
     fullWords = count >> 3;
     remainder = count - (fullWords << 3);
-    __buf_memmove(&_buf_get_u64, &_buf_set_u64, dst, src, fullWords);
     __buf_memmove(&_buf_get_u8, &_buf_set_u8, dst + (fullWords << 3), src + (fullWords << 3), remainder);
+    __buf_memmove(&_buf_get_u64, &_buf_set_u64, dst, src, fullWords);
     return dst;
 }
 
@@ -96,8 +96,8 @@ _buf_memmove_u16(dst, src, count) {
     if (dst == src) { return dst; }
     fullWords = count >> 2;
     remainder = count - (fullWords << 2);
-    __buf_memmove(&_buf_get_u64, &_buf_set_u64, dst, src, fullWords);
     __buf_memmove(&_buf_get_u16, &_buf_set_u16, dst + (fullWords << 3), src + (fullWords << 3), remainder);
+    __buf_memmove(&_buf_get_u64, &_buf_set_u64, dst, src, fullWords);
     return dst;
 }
 
@@ -106,37 +106,17 @@ _buf_memmove_u32(dst, src, count) {
     if (dst == src) { return dst; }
     fullWords = count >> 1;
     remainder = count - (fullWords << 1);
-    __buf_memmove(&_buf_get_u64, &_buf_set_u64, dst, src, fullWords);
     __buf_memmove(&_buf_get_u32, &_buf_set_u32, dst + (fullWords << 3), src + (fullWords << 3), remainder);
+    __buf_memmove(&_buf_get_u64, &_buf_set_u64, dst, src, fullWords);
     return dst;
 }
 
 _buf_memmove_u64(dst, src, count) { return __buf_memmove(&_buf_get_u64, &_buf_set_u64, dst, src, count); }
 
-_buf_cmp_u8(a, b, count) {
-    if (count <= 0) { return 0; }
-    fullWords = count >> 3;
-    remainder = count - (fullWords << 3);
-    cmp = __buf_cmp(&_buf_get_u64, a, b, fullWords);
-    if (cmp != 0) { return cmp; }
-    return __buf_cmp(&_buf_get_u8, a + (fullWords << 3), b + (fullWords << 3), remainder);
-}
-_buf_cmp_u16(a, b, count) {
-    if (count <= 0) { return 0; }
-    fullWords = count >> 2;
-    remainder = count - (fullWords << 2);
-    cmp = __buf_cmp(&_buf_get_u64, a, b, fullWords);
-    if (cmp != 0) { return cmp; }
-    return __buf_cmp(&_buf_get_u16, a + (fullWords << 3), b + (fullWords << 3), remainder);
-}
-_buf_cmp_u32(a, b, count) {
-    if (count <= 0) { return 0; }
-    fullWords = count >> 1;
-    remainder = count - (fullWords << 1);
-    cmp = __buf_cmp(&_buf_get_u64, a, b, fullWords);
-    if (cmp != 0) { return cmp; }
-    return __buf_cmp(&_buf_get_u32, a + (fullWords << 3), b + (fullWords << 3), remainder);
-}
+// couldn't optimize it further because of the endianness constraint
+_buf_cmp_u8(a, b, count) { return __buf_cmp(&_buf_get_u8, a, b, count); }
+_buf_cmp_u16(a, b, count) { return __buf_cmp(&_buf_get_u16, a, b, count); }
+_buf_cmp_u32(a, b, count) { return __buf_cmp(&_buf_get_u32, a, b, count); }
 _buf_cmp_u64(a, b, count) { return __buf_cmp(&_buf_get_u64, a, b, count); }
 
 _buf_memset_u8(dst, val, count) {
