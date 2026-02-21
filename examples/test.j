@@ -1,8 +1,11 @@
 main() {
-    _print_int(mem);
-    _print_char(10);
-    a = _read_int();
-    _print_int(a);
-    _print_char(10);
-    _print_char(10);
+    tmp = _read_str();
+    _str_cpy(mem + 8, tmp);
+    a = 67;
+    a = a | (a << 8);
+    a = a | (a << 16);
+    a = a | (a << 32);
+    mem[0] = a;
+    _print_str(mem);
+    return 0;
 }

@@ -299,6 +299,11 @@ static void genExpr(ByteBuf *text, PatchList *patches, Expr *e, VarNode *locals)
         case EX_VAR: {
             int idx = findVarIndex(locals, e[0].varName);
             if (idx >= 0) { emitLoadLocal(text, idx); return; }
+            if (strcmp(e[0].varName, "mem") == 0) {
+                emitMovRegImm64Patch(text, patches, SEG_TEXT, REG_RAX, "mem", 0);
+                emitMovRegMemDisp(text, REG_RAX, REG_RAX, 0);
+                return;
+            }
             emitMovRegImm64(text, REG_RAX, 0);
             return;
         }
