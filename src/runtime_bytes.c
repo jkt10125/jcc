@@ -2,7 +2,7 @@
 
 // Emits:
 // _start: call lang_main; exit(return)
-// rt_put_int: syscall-only decimal print with newline
+// rt_put_int: syscall-only decimal print (no newline)
 // rt_get_int: syscall-only read + parse signed decimal from stdin
 // (old string syscall helpers removed; string helpers live in stdlib now)
 // rt_read_char: syscall-only read one byte
@@ -62,18 +62,13 @@ void emitRuntime(ByteBuf *text, PatchList *patches, RuntimeOffsets *outOffsets) 
     int32_t relJge = (int32_t)((int64_t)text[0].size - (int64_t)(jgeOff + 4));
     patchRel32(text, jgeOff, relJge);
 
-    // rsi = &bufEnd (rbp-17): mov rsi, rbp; sub rsi, 17
+    // rsi = &bufEnd (rbp-16): mov rsi, rbp; sub rsi, 16
     emitMovRegReg(text, REG_RSI, REG_RBP);
-    emitMovRegImm64Const(text, REG_RAX, 17);
+    emitMovRegImm64Const(text, REG_RAX, 16);
     emitSubRegReg(text, REG_RSI, REG_RAX);
 
-    // write newline at [rsi]
-    emitMovRegImm64Const(text, REG_RAX, (uint64_t)'\n');
-    // mov byte ptr [rsi], al : 88 06
-    emitU8(text, 0x88); emitU8(text, 0x06);
-
-    // r8 = 1 (len)
-    emitMovRegImm64Const(text, REG_R8, 1);
+    // r8 = 0 (len)
+    emitMovRegImm64Const(text, REG_R8, 0);
 
     // if value == 0: store '0'
     emitCmpRegImm8(text, REG_RDI, 0);

@@ -19,7 +19,8 @@ typedef enum {
     TOK_LT, TOK_GT, TOK_LE, TOK_GE,
     TOK_EQ, TOK_NEQ,
     TOK_RETURN,
-    TOK_IF, TOK_ELSE, TOK_WHILE
+    TOK_IF, TOK_ELSE, TOK_WHILE,
+    TOK_BREAK, TOK_CONTINUE
 } TokenKind;
 
 typedef struct {

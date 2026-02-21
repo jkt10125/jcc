@@ -58,6 +58,18 @@ Stmt *newWhileStmt(Expr *cond, Stmt *body) {
     return s;
 }
 
+Stmt *newBreakStmt(void) {
+    Stmt *s = calloc(1, sizeof(Stmt));
+    s->kind = NODE_STMT_BREAK;
+    return s;
+}
+
+Stmt *newContinueStmt(void) {
+    Stmt *s = calloc(1, sizeof(Stmt));
+    s->kind = NODE_STMT_CONTINUE;
+    return s;
+}
+
 Function *newFunction(char *name, char **params, int paramCount, Stmt *body) {
     Function *f = calloc(1, sizeof(Function));
     f->name = name; f->params = params; f->paramCount = paramCount; f->body = body; f->next = NULL; return f;

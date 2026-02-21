@@ -10,7 +10,9 @@ typedef enum {
     NODE_STMT_EXPR,
     NODE_STMT_BLOCK,
     NODE_STMT_IF,
-    NODE_STMT_WHILE
+    NODE_STMT_WHILE,
+    NODE_STMT_BREAK,
+    NODE_STMT_CONTINUE
 } NodeKind;
 
 typedef enum { EX_INT, EX_VAR, EX_BINOP, EX_CALL, EX_ADDR, EX_INDEX } ExprKind;
@@ -85,6 +87,8 @@ Stmt *newExprStmt(Expr *e);
 Stmt *newBlockStmt(Stmt *body);
 Stmt *newIfStmt(Expr *cond, Stmt *thenBranch, Stmt *elseBranch);
 Stmt *newWhileStmt(Expr *cond, Stmt *body);
+Stmt *newBreakStmt(void);
+Stmt *newContinueStmt(void);
 
 Function *newFunction(char *name, char **params, int paramCount, Stmt *body);
 Program *newProgram(void);

@@ -1,12 +1,15 @@
 main() {
     p = rt_str_buf_ptr();
-    __str_set_byte(p, 0, 56);
-    __print_int(__str_get_byte(p, 0));
-    __str_set_byte(p, 1, 67);
-    __print_int(__str_get_byte(p, 1));
-    __str_set_byte(p, 2, 10);
-    __print_int(__str_get_byte(p, 2));
-    __print_str(p);
+    _buf_set_u8(p, 0, 56);
+    _print_int(_buf_get_u8(p, 0));
+    _print_char(10);
+    _buf_set_u8(p, 1, 67);
+    _print_int(_buf_get_u8(p, 1));
+    _print_char(10);
+    _buf_set_u8(p, 2, 10);
+    _print_int(_buf_get_u8(p, 2));
+    _print_char(10);
+    _print_str(p);
     return 0;
 }
 

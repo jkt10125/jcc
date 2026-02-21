@@ -45,18 +45,22 @@ static int checkExpr(Expr *e, Def *defs, Def *funcs) {
     return 1;
 }
 
-static int checkStmt(Stmt *s, Def **defs, Def *funcs);
+static int checkStmt(Stmt *s, Def **defs, Def *funcs, int inLoop);
 
-static int checkStmtList(Stmt *s, Def **defs, Def *funcs) {
+static int checkStmtList(Stmt *s, Def **defs, Def *funcs, int inLoop) {
     for (Stmt *p = s; p; p = p[0].next) {
-        if (!checkStmt(p, defs, funcs)) return 0;
+        if (!checkStmt(p, defs, funcs, inLoop)) return 0;
     }
     return 1;
 }
 
-static int checkStmt(Stmt *s, Def **defs, Def *funcs) {
+static int checkStmt(Stmt *s, Def **defs, Def *funcs, int inLoop) {
     if (!s) return 1;
     if (s[0].kind==NODE_STMT_ASSIGN) {
+        if (strcmp(s[0].assign.lhs, "mem") == 0) {
+            fprintf(stderr, "semantic error: cannot assign to 'mem' (read-only)\n");
+            return 0;
+        }
         if (!checkExpr(s[0].assign.rhs, defs[0], funcs)) return 0;
         addDef(defs, s[0].assign.lhs);
         return 1;
@@ -81,19 +85,33 @@ static int checkStmt(Stmt *s, Def **defs, Def *funcs) {
         return checkExpr(s[0].exprStmt, defs[0], funcs);
     }
     if (s[0].kind==NODE_STMT_BLOCK) {
-        return checkStmtList(s[0].blockBody, defs, funcs);
+        return checkStmtList(s[0].blockBody, defs, funcs, inLoop);
     }
     if (s[0].kind==NODE_STMT_IF) {
         if (!checkExpr(s[0].ifStmt.cond, defs[0], funcs)) return 0;
-        if (!checkStmt(s[0].ifStmt.thenBranch, defs, funcs)) return 0;
+        if (!checkStmt(s[0].ifStmt.thenBranch, defs, funcs, inLoop)) return 0;
         if (s[0].ifStmt.elseBranch) {
-            if (!checkStmt(s[0].ifStmt.elseBranch, defs, funcs)) return 0;
+            if (!checkStmt(s[0].ifStmt.elseBranch, defs, funcs, inLoop)) return 0;
         }
         return 1;
     }
     if (s[0].kind==NODE_STMT_WHILE) {
         if (!checkExpr(s[0].whileStmt.cond, defs[0], funcs)) return 0;
-        return checkStmt(s[0].whileStmt.body, defs, funcs);
+        return checkStmt(s[0].whileStmt.body, defs, funcs, 1);
+    }
+    if (s[0].kind==NODE_STMT_BREAK) {
+        if (!inLoop) {
+            fprintf(stderr, "semantic error: 'break' outside of loop\n");
+            return 0;
+        }
+        return 1;
+    }
+    if (s[0].kind==NODE_STMT_CONTINUE) {
+        if (!inLoop) {
+            fprintf(stderr, "semantic error: 'continue' outside of loop\n");
+            return 0;
+        }
+        return 1;
     }
     return 1;
 }
@@ -117,7 +135,7 @@ int semaCheck(Program *p) {
         Def *defs = NULL;
         // params are defined
         for (int i=0;i<f->paramCount;i++) addDef(&defs, f->params[i]);
-        if (!checkStmt(f->body, &defs, funcs)) return 0;
+        if (!checkStmt(f->body, &defs, funcs, 0)) return 0;
     }
     return 1;
 }

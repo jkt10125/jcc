@@ -25,53 +25,70 @@ arithSuite(x, y) {
 }
 
 main() {
-    __print_int(2 + 3 * 4);
+    _print_int(2 + 3 * 4);
+    _print_char(10);
 
     mem[0] = &add;
-    __print_int(mem[0](mem[0](1, 2), 3));
-    __print_int(mem[0](5, 6));
+    _print_int(mem[0](mem[0](1, 2), 3));
+    _print_char(10);
+    _print_int(mem[0](5, 6));
+    _print_char(10);
 
     mem[0] = &mul;
-    __print_int(mem[0](5, 6));
+    _print_int(mem[0](5, 6));
+    _print_char(10);
 
     mem[0] = getAdd();
-    __print_int(mem[0](7, 8));
+    _print_int(mem[0](7, 8));
+    _print_char(10);
 
-    __print_int(callViaMem(&add, 9, 10));
+    _print_int(callViaMem(&add, 9, 10));
+    _print_char(10);
 
     mem[1] = 20;
     mem[2] = 3;
     mem[3] = 4;
 
     mem[5] = 123;
-    __print_int(mem[5]);
+    _print_int(mem[5]);
+    _print_char(10);
 
     mem[5] = 0 - 7;
-    __print_int(mem[5]);
-    __print_int(0 - mem[2]);
+    _print_int(mem[5]);
+    _print_char(10);
+    _print_int(0 - mem[2]);
+    _print_char(10);
 
-    __print_int(divi(100, 3));
-    __print_int(modi(100, 3));
+    _print_int(divi(100, 3));
+    _print_char(10);
+    _print_int(modi(100, 3));
+    _print_char(10);
 
-    __print_int(arithSuite(17, 5));
+    _print_int(arithSuite(17, 5));
+    _print_char(10);
 
     // >6 arguments (stack arguments test)
-    __print_int(sum8(1, 2, 3, 4, 5, 6, 7, 8));
+    _print_int(sum8(1, 2, 3, 4, 5, 6, 7, 8));
+    _print_char(10);
 
     mem[6] = &add;
     mem[7] = &sub;
-    __print_int(mem[6](50, 1));
-    __print_int(mem[7](50, 1));
+    _print_int(mem[6](50, 1));
+    _print_char(10);
+    _print_int(mem[7](50, 1));
+    _print_char(10);
 
     mem[8] = callViaMem(mem[6], 1, 2);
-    __print_int(mem[8]);
+    _print_int(mem[8]);
+    _print_char(10);
 
     mem[0] = &add;
     result = 0;
     result = result + 1;
     result = result + mem[1];
     result = result + mem[0](1, 2);
-    __print_int(result);
+    _print_int(result);
+    _print_char(10);
     return result;
 }
 

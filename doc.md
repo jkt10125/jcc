@@ -28,7 +28,7 @@ The language is intentionally small: **one signed 64-bit integer type** and a **
   - 4.2 Return
   - 4.3 Expression statement
   - 4.4 Blocks
-  - 4.5 Control flow (`if`, `else`, `while`)
+  - 4.5 Control flow (`if`, `else`, `while`, `break`, `continue`)
 - **5. Expressions**
   - 5.1 Literals and identifiers
   - 5.2 Arithmetic operators
@@ -45,10 +45,10 @@ The language is intentionally small: **one signed 64-bit integer type** and a **
   - 6.2 Storing in locals / `mem`
   - 6.3 Indirect calls
 - **7. Standard library I/O**
-  - 7.1 `__print_int(x)`
-  - 7.2 `__print_char(x)`
-  - 7.3 `__read_int()`
-  - 7.4 `__exit(code)`
+  - 7.1 `_print_int(x)`
+  - 7.2 `_print_char(x)`
+  - 7.3 `_read_int()`
+  - 7.4 `_exit(code)`
 - **8. Examples**
   - 8.1 Minimal program
   - 8.2 Using `mem` as a table
@@ -106,6 +106,7 @@ In the current `jcc` implementation, `mem` is modeled as:
 - A global 64-bit value `mem` that holds the base address of `memArray`
 - `memArray` is a static data segment array of `MEM_ENTRIES` elements
 - `mem[i]` means load/store at address `(mem + i*8)`
+- `mem` itself is **read-only**: you cannot assign to it (e.g. `mem = x` is a semantic error).
 
 ---
 
@@ -116,8 +117,8 @@ In the current `jcc` implementation, `mem` is modeled as:
 Practical implications:
 
 - Stdlib functions are written in the same language, live under `stdlib/*.j`, and are compiled like normal code.
-- Stdlib functions use a `__` prefix by convention (for example: `__print_int`, `__read_int`, `__mem_copy_words`).
-- The runtime (embedded assembly bytes) exposes a few low-level helper functions (currently `rt_put_int`, `rt_get_int`, `rt_exit`) that stdlib calls; user code typically calls the `__...` wrappers instead.
+- Stdlib functions use a `_` prefix (e.g. `_print_int`, `_read_int`, `_buf_get_u8`); internal helpers use `__` (e.g. `__mem_store`, `__index_store`, `__buf_get`, `__buf_set`).
+- The runtime (embedded assembly bytes) exposes a few low-level helper functions (currently `rt_put_int`, `rt_get_int`, `rt_exit`) that stdlib calls; user code typically calls the `_...` wrappers instead.
 
 ---
 
@@ -131,23 +132,40 @@ Practical implications:
 
 Stdlib functions:
 
-- `__read_str()` reads a line from stdin (stops at newline), writes a terminating `0` byte, and returns a pointer to the buffer.
+- `_read_str()` reads a line from stdin (stops at newline), writes a terminating `0` byte, and returns a pointer to the buffer.
   - Max length: 4096 bytes (longer input is truncated).
-  - The returned pointer refers to a **single static runtime buffer**; a later `__read_str()` call overwrites it.
-- `__print_str(ptr)` prints bytes starting at `ptr` until it sees a `0` byte.
-- `__str_get_byte(ptr, idx)` returns the byte at the given index as an integer `0..255`.
-  - If `idx` is past the end of the string (terminator), it returns `0`.
+  - The returned pointer refers to a **single static runtime buffer**; a later `_read_str()` call overwrites it.
+- `_print_str(ptr)` prints bytes starting at `ptr` until it sees a `0` byte.
+- `_buf_get_u8(ptr, idx)` returns the byte at the given index as an integer `0..255` (raw access).
 
 Input primitive:
 
-- `__read_char()` reads one byte from stdin and returns `0..255`, or `-1` on EOF/error.
+- `_read_char()` reads one byte from stdin and returns `0..255`, or `-1` on EOF/error.
+
+Packed buffers:
+
+- `_buf_get_u8/_buf_set_u8` treat `ptr` as a packed array of 8-bit elements (8 elements per `int64` word).
+- `_buf_get_u16/_buf_set_u16`: packed 16-bit elements (4 per word).
+- `_buf_get_u32/_buf_set_u32`: packed 32-bit elements (2 per word).
+- `_buf_get_u64/_buf_set_u64`: 64-bit elements (1 per word).
+
+All packing is **little-endian within each 64-bit word** and indices are **element indices** (for example u16 index 1 shifts by 16; u32 index 1 shifts by 32).
+
+Generic operations (take get/set function pointers):
+
+- `_buf_memmove(get_fn, set_fn, dst_ptr, src_ptr, count)` overlap-safe copy; e.g. `_buf_memmove(&_buf_get_u8, &_buf_set_u8, dst, src, n)`.
+- `_buf_cmp(get_fn, a_ptr, b_ptr, count)` returns 0 if equal, -1/1 otherwise; e.g. `_buf_cmp(&_buf_get_u64, a, b, n)`.
+
+Convenience helpers (no function pointers):
+
+- `_buf_memmove_u8/u16/u32/u64(dst, src, count)`, `_buf_cmp_u8/u16/u32/u64(a, b, count)`, and `_buf_memset_u8/u16/u32/u64(dst, val, count)`.
 
 Example:
 
 ```c
 main() {
-    p = __read_str();
-    __print_str(p);
+    p = _read_str();
+    _print_str(p);
     return 0;
 }
 ```
@@ -280,7 +298,7 @@ Any expression can be used as a statement by adding `;`.
 Most commonly used for calls:
 
 ```c
-__print_int(123);
+_print_int(123);
 f(1, 2);
 mem[0](5, 6); // indirect call as a statement
 ```
@@ -304,8 +322,10 @@ The language supports:
 
 - `if (expr) { ... }` optionally followed by `else { ... }`
 - `while (expr) { ... }`
+- `break;` exits the innermost enclosing `while` loop
+- `continue;` jumps to the next iteration of the innermost enclosing `while` loop (re-evaluates the condition)
 
-Note: the current `jcc` parser requires the body of `if`, `else`, and `while` to be a block `{ ... }`.
+Note: the current `jcc` parser requires the body of `if`, `else`, and `while` to be a block `{ ... }`. `break` and `continue` must appear inside a `while` loop; using them outside a loop is a semantic error.
 
 Truthiness is based on integer values:
 
@@ -347,11 +367,11 @@ Supported arithmetic:
 Examples:
 
 ```c
-__print_int(7 + 8);     // 15
-__print_int(7 - 8);     // -1
-__print_int(7 * 8);     // 56
-__print_int(100 / 3);   // 33 (integer division)
-__print_int(100 % 3);   // 1
+_print_int(7 + 8);     // 15
+_print_int(7 - 8);     // -1
+_print_int(7 * 8);     // 56
+_print_int(100 / 3);   // 33 (integer division)
+_print_int(100 % 3);   // 1
 ```
 
 ### 5.3 Bitwise operators (`&`, `|`, `^`, `<<`, `>>`)
@@ -374,11 +394,11 @@ Examples:
 
 ```c
 main() {
-    __print_int(5 & 3);      // 1
-    __print_int(5 | 2);      // 7
-    __print_int(5 ^ 1);      // 4
-    __print_int(1 << 3);     // 8
-    __print_int(-1 >> 1);    // 9223372036854775807
+    _print_int(5 & 3);      // 1
+    _print_int(5 | 2);      // 7
+    _print_int(5 ^ 1);      // 4
+    _print_int(1 << 3);     // 8
+    _print_int(-1 >> 1);    // 9223372036854775807
     return 0;
 }
 ```
@@ -417,8 +437,8 @@ Typical precedence (high to low):
 Example:
 
 ```c
-__print_int(2 + 3 * 4);     // 14
-__print_int((2 + 3) * 4);   // 20
+_print_int(2 + 3 * 4);     // 14
+_print_int((2 + 3) * 4);   // 20
 ```
 
 ### 5.6 Array indexing: `x[i]`
@@ -451,9 +471,9 @@ That means you can store an address into a local and then index it:
 main() {
     x = 123;
     p = &x;      // p is an int64 address
-    __print_int(p[0]); // prints 123
+    _print_int(p[0]); // prints 123
     p[0] = 999;  // writes to x through the pointer
-    __print_int(x);  // prints 999
+    _print_int(x);  // prints 999
     return 0;
 }
 ```
@@ -490,8 +510,8 @@ main() {
     b = 20;
     p = &b;
     p[0] = 777;
-    __print_int(a);
-    __print_int(b); // prints 777
+    _print_int(a);
+    _print_int(b); // prints 777
     return 0;
 }
 ```
@@ -556,9 +576,9 @@ Example:
 add3(a, b, c) { return a + b + c; }
 
 main() {
-    __print_int(add3(5));      // prints 5 (treated as add3(5,0,0))
+    _print_int(add3(5));      // prints 5 (treated as add3(5,0,0))
     mem[0] = &add3;
-    __print_int(mem[0](7));    // prints 7 (pads missing args to 0)
+    _print_int(mem[0](7));    // prints 7 (pads missing args to 0)
     return 0;
 }
 ```
@@ -601,16 +621,16 @@ mem[0](1, 2);  // common pattern
 
 ## 7. Standard library I/O
 
-### 7.1 `__print_int(x)`
+### 7.1 `_print_int(x)`
 
-`__print_int(x);` prints the signed 64-bit integer `x` followed by a newline.
+`_print_int(x);` prints the signed 64-bit integer `x` (no newline).
 
 Example:
 
 ```c
 main() {
     x = -7;
-    __print_int(x);
+    _print_int(x);
     return 0;
 }
 ```
@@ -619,23 +639,23 @@ In the current `jcc` direct-ELF backend, printing is implemented via a runtime h
 
 - `sys_write(1, buf, len)` to stdout
 
-### 7.2 `__print_char(x)`
+### 7.2 `_print_char(x)`
 
-`__print_char(x);` prints the low 8 bits of `x` as a single byte to stdout, with **no newline**.
+`_print_char(x);` prints the low 8 bits of `x` as a single byte to stdout, with **no newline**.
 
 This is implemented via a runtime helper (`rt_put_char`) that performs `sys_write(1, &byte, 1)`.
 
-### 7.3 `__read_int()`
+### 7.3 `_read_int()`
 
-`__read_int();` reads a signed decimal integer from stdin and returns it.
+`_read_int();` reads a signed decimal integer from stdin and returns it.
 
 The current `jcc` implementation reads from stdin using a runtime helper (`rt_get_int`) that uses:
 
 - `sys_read(0, buf, n)` from stdin
 
-### 7.4 `__exit(code)`
+### 7.4 `_exit(code)`
 
-`__exit(code);` terminates the process with the given exit code via a runtime helper (`rt_exit`).
+`_exit(code);` terminates the process with the given exit code via a runtime helper (`rt_exit`).
 
 ---
 
@@ -655,7 +675,7 @@ main() {
 main() {
     mem[0] = 10;
     mem[1] = 20;
-    __print_int(mem[0] + mem[1]); // prints 30
+    _print_int(mem[0] + mem[1]); // prints 30
     return mem[0] + mem[1];
 }
 ```
@@ -667,7 +687,7 @@ add(a, b) { return a + b; }
 
 main() {
     mem[0] = &add;
-    __print_int(mem[0](5, 10)); // prints 15
+    _print_int(mem[0](5, 10)); // prints 15
     return mem[0](5, 10);
 }
 ```
@@ -683,7 +703,7 @@ fact(n) {
 }
 
 main() {
-    __print_int(fact(5)); // 120
+    _print_int(fact(5)); // 120
     return fact(5);
 }
 ```
@@ -727,7 +747,7 @@ As of the current implementation:
   - blocks `{ ... }` (no new scope; function-level locals)
   - `if (...) { ... } else { ... }` (block bodies required by parser)
   - `while (...) { ... }` (block body required by parser)
-  - standard library auto-prelude from `stdlib/` (functions like `__print_int`, `__print_char`, `__read_int`, `__exit`)
+  - standard library auto-prelude from `stdlib/` (functions like `_print_int`, `_print_char`, `_read_int`, `_exit`)
   - `//` line comments
   - Calls:
     - more than 6 arguments supported (stack arguments)

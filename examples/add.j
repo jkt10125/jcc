@@ -8,7 +8,8 @@ main() {
     y = 1;
     mem[1] = 20;
     result = mem[0](1,0,0,0,0,0,0,0,0,mem[0](1)) - mem[1];
-    __print_int(result);
+    _print_int(result);
+    _print_char(10);
     return 0;
 }
 

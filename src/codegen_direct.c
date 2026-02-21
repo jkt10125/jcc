@@ -19,6 +19,27 @@ typedef struct FnSigNode {
     struct FnSigNode *next;
 } FnSigNode;
 
+typedef struct {
+    size_t *offsets;
+    int count;
+    int cap;
+} BreakList;
+
+static void breakListInit(BreakList *b) { b[0].offsets = NULL; b[0].count = 0; b[0].cap = 0; }
+static void breakListAdd(BreakList *b, size_t off) {
+    if (b[0].count >= b[0].cap) {
+        b[0].cap = b[0].cap ? b[0].cap * 2 : 4;
+        b[0].offsets = realloc(b[0].offsets, b[0].cap * sizeof(size_t));
+    }
+    b[0].offsets[b[0].count++] = off;
+}
+static void breakListPatch(ByteBuf *text, BreakList *b) {
+    for (int i = 0; i < b[0].count; i++) {
+        int32_t rel = (int32_t)((int64_t)text[0].size - (int64_t)(b[0].offsets[i] + 4));
+        patchRel32(text, b[0].offsets[i], rel);
+    }
+}
+
 static FnSigNode *fnSigList = NULL;
 static int maxParamCount = 0;
 
@@ -229,20 +250,26 @@ static void genCall(ByteBuf *text, PatchList *patches, Expr *e, VarNode *locals)
         emitPushReg(text, REG_RAX);
     }
 
-    // first 6 args in registers
+    // first 6 args in registers (evaluate in reverse order so nested calls don't overwrite earlier args)
     int regProvided = argCount < 6 ? argCount : 6;
     for (int i = regProvided; i < 6; i++) {
         emitMovRegImm64(text, REG_RAX, 0);
         emitMovRegReg(text, argRegs[i], REG_RAX);
     }
-    for (int i = 0; i < regProvided; i++) {
+    for (int i = regProvided - 1; i >= 0; i--) {
         genExpr(text, patches, e[0].call.args[i], locals);
         emitMovRegReg(text, argRegs[i], REG_RAX);
     }
 
     if (e[0].call.fn->kind == EX_VAR) {
-        emitMovRegImm64Patch(text, patches, SEG_TEXT, REG_RAX, e[0].call.fn->varName, 0);
-        emitCallReg(text, REG_RAX);
+        int fnIdx = findVarIndex(locals, e[0].call.fn->varName);
+        if (fnIdx >= 0) {
+            emitLoadLocal(text, fnIdx);
+            emitCallReg(text, REG_RAX);
+        } else {
+            emitMovRegImm64Patch(text, patches, SEG_TEXT, REG_RAX, e[0].call.fn->varName, 0);
+            emitCallReg(text, REG_RAX);
+        }
     } else {
         genExpr(text, patches, e[0].call.fn, locals);
         emitCallReg(text, REG_RAX);
@@ -298,7 +325,7 @@ static void genExpr(ByteBuf *text, PatchList *patches, Expr *e, VarNode *locals)
     emitMovRegImm64(text, REG_RAX, 0);
 }
 
-static void genStmtListInternal(ByteBuf *text, PatchList *patches, Stmt *s, VarNode *locals, uint32_t stackAlloc, int emitDefaultReturn) {
+static void genStmtListInternal(ByteBuf *text, PatchList *patches, Stmt *s, VarNode *locals, uint32_t stackAlloc, int emitDefaultReturn, size_t loopStart, BreakList *breakList) {
     for (Stmt *p = s; p; p = p[0].next) {
         if (p[0].kind == NODE_STMT_ASSIGN) {
             genExpr(text, patches, p[0].assign.rhs, locals);
@@ -312,18 +339,18 @@ static void genStmtListInternal(ByteBuf *text, PatchList *patches, Stmt *s, VarN
         } else if (p[0].kind == NODE_STMT_EXPR) {
             genExpr(text, patches, p[0].exprStmt, locals);
         } else if (p[0].kind == NODE_STMT_BLOCK) {
-            genStmtListInternal(text, patches, p[0].blockBody, locals, stackAlloc, 0);
+            genStmtListInternal(text, patches, p[0].blockBody, locals, stackAlloc, 0, loopStart, breakList);
         } else if (p[0].kind == NODE_STMT_IF) {
             genExpr(text, patches, p[0].ifStmt.cond, locals);
             emitTestRegReg(text, REG_RAX, REG_RAX);
             size_t jeElse = emitJccRel32Placeholder(text, 0x4); // JE
             // then
-            genStmtListInternal(text, patches, p[0].ifStmt.thenBranch, locals, stackAlloc, 0);
+            genStmtListInternal(text, patches, p[0].ifStmt.thenBranch, locals, stackAlloc, 0, loopStart, breakList);
             if (p[0].ifStmt.elseBranch) {
                 size_t jmpEnd = emitJmpRel32Placeholder(text);
                 int32_t relElse = (int32_t)((int64_t)text[0].size - (int64_t)(jeElse + 4));
                 patchRel32(text, jeElse, relElse);
-                genStmtListInternal(text, patches, p[0].ifStmt.elseBranch, locals, stackAlloc, 0);
+                genStmtListInternal(text, patches, p[0].ifStmt.elseBranch, locals, stackAlloc, 0, loopStart, breakList);
                 int32_t relEnd = (int32_t)((int64_t)text[0].size - (int64_t)(jmpEnd + 4));
                 patchRel32(text, jmpEnd, relEnd);
             } else {
@@ -331,17 +358,28 @@ static void genStmtListInternal(ByteBuf *text, PatchList *patches, Stmt *s, VarN
                 patchRel32(text, jeElse, relElse);
             }
         } else if (p[0].kind == NODE_STMT_WHILE) {
-            size_t loopStart = text[0].size;
+            size_t innerLoopStart = text[0].size;
+            BreakList innerBreaks;
+            breakListInit(&innerBreaks);
             genExpr(text, patches, p[0].whileStmt.cond, locals);
             emitTestRegReg(text, REG_RAX, REG_RAX);
             size_t jeEnd = emitJccRel32Placeholder(text, 0x4); // JE
-            genStmtListInternal(text, patches, p[0].whileStmt.body, locals, stackAlloc, 0);
+            genStmtListInternal(text, patches, p[0].whileStmt.body, locals, stackAlloc, 0, innerLoopStart, &innerBreaks);
             // jmp back
             size_t jmpBack = emitJmpRel32Placeholder(text);
-            int32_t relBack = (int32_t)((int64_t)loopStart - (int64_t)(jmpBack + 4));
+            int32_t relBack = (int32_t)((int64_t)innerLoopStart - (int64_t)(jmpBack + 4));
             patchRel32(text, jmpBack, relBack);
+            breakListPatch(text, &innerBreaks);
+            free(innerBreaks.offsets);
             int32_t relEnd = (int32_t)((int64_t)text[0].size - (int64_t)(jeEnd + 4));
             patchRel32(text, jeEnd, relEnd);
+        } else if (p[0].kind == NODE_STMT_BREAK) {
+            size_t jmpOff = emitJmpRel32Placeholder(text);
+            breakListAdd(breakList, jmpOff);
+        } else if (p[0].kind == NODE_STMT_CONTINUE) {
+            size_t jmpOff = emitJmpRel32Placeholder(text);
+            int32_t rel = (int32_t)((int64_t)loopStart - (int64_t)(jmpOff + 4));
+            patchRel32(text, jmpOff, rel);
         }
     }
     if (emitDefaultReturn) {
@@ -408,7 +446,7 @@ static void genFunctionBytes(ByteBuf *text, PatchList *patches, Function *fn) {
         emitStoreLocal(text, i);
     }
 
-    genStmtListInternal(text, patches, fn[0].body, locals, stackAlloc, 1);
+    genStmtListInternal(text, patches, fn[0].body, locals, stackAlloc, 1, 0, NULL);
 }
 
 static uint64_t computeDataVaddr(uint64_t textSize) {

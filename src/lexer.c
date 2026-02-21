@@ -44,6 +44,8 @@ Token lexerNext(Lexer *lx) {
         else if (strcmp(t, "if")==0) { setToken(lx, TOK_IF, t, 0); }
         else if (strcmp(t, "else")==0) { setToken(lx, TOK_ELSE, t, 0); }
         else if (strcmp(t, "while")==0) { setToken(lx, TOK_WHILE, t, 0); }
+        else if (strcmp(t, "break")==0) { setToken(lx, TOK_BREAK, t, 0); }
+        else if (strcmp(t, "continue")==0) { setToken(lx, TOK_CONTINUE, t, 0); }
         else setToken(lx, TOK_IDENT, t, 0);
         return lx->cur;
     }

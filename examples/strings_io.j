@@ -1,7 +1,7 @@
 main() {
-    p = __read_str();
-    __print_str(p);
-    __print_char(10);
+    p = _read_str();
+    _print_str(p);
+    _print_char(10);
     return 0;
 }
 

@@ -240,6 +240,16 @@ static Stmt *parseStmt(Parser *p) {
         expect(p, TOK_SEMI);
         return newReturnStmt(e);
     }
+    if (p->cur.kind==TOK_BREAK) {
+        next(p);
+        expect(p, TOK_SEMI);
+        return newBreakStmt();
+    }
+    if (p->cur.kind==TOK_CONTINUE) {
+        next(p);
+        expect(p, TOK_SEMI);
+        return newContinueStmt();
+    }
     // assignment or expr
     if (p->cur.kind==TOK_IDENT) {
             char *name = strDup(p->cur.text);

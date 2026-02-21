@@ -1,7 +1,8 @@
 main() {
-    p = __read_str();
-    __print_int(__str_get_byte(p, 0));
-    __print_str(p);
+    p = _read_str();
+    _print_int(_buf_get_u8(p, 0));
+    _print_char(10);
+    _print_str(p);
     return 0;
 }
 
