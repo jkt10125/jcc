@@ -118,7 +118,7 @@ Practical implications:
 
 - Stdlib functions are written in the same language, live under `stdlib/*.j`, and are compiled like normal code.
 - Stdlib functions use a `_` prefix (e.g. `_print_int`, `_read_int`, `_buf_get_u8`); internal helpers use `__` (e.g. `__mem_store`, `__index_store`, `__buf_get`, `__buf_set`).
-- The runtime (embedded assembly bytes) exposes a few low-level helper functions (currently `rt_put_int`, `rt_get_int`, `rt_exit`) that stdlib calls; user code typically calls the `_...` wrappers instead.
+- The runtime (embedded assembly bytes) exposes low-level helper functions (`rt_put_int`, `rt_get_int`, `rt_put_char`, `rt_read_char`, `rt_exit`, `rt_str_buf_ptr`) that stdlib calls; user code typically calls the `_...` wrappers instead.
 
 ---
 
@@ -418,7 +418,7 @@ x = (5 < 7);   // expected 1
 y = (5 == 7);  // expected 0
 ```
 
-### 5.4 Parentheses and precedence
+### 5.5 Parentheses and precedence
 
 Parentheses `(...)` group expressions.
 
@@ -461,7 +461,7 @@ i = 3;
 mem[i + 2] = 99;   // writes mem[5]
 ```
 
-#### 5.5.1 Local pointer indexing
+#### 5.6.1 Local pointer indexing
 
 In this language, **addresses are integers** (still the same single `int64` type).
 
@@ -719,7 +719,13 @@ The size of the global memory array is specified at compile time.
 With `jcc` the interface is:
 
 ```bash
-jcc -m 1024 program.j
+jcc -m <memEntries> [ -o <out> ] <source>
+```
+
+Example:
+
+```bash
+jcc -m 1024 -o myprog program.j
 ```
 
 This sets `MEM_ENTRIES = 1024` and the generated executable contains:
@@ -747,6 +753,7 @@ As of the current implementation:
   - blocks `{ ... }` (no new scope; function-level locals)
   - `if (...) { ... } else { ... }` (block bodies required by parser)
   - `while (...) { ... }` (block body required by parser)
+  - `break;` and `continue;` (inside `while` loops only)
   - standard library auto-prelude from `stdlib/` (functions like `_print_int`, `_print_char`, `_read_int`, `_exit`)
   - `//` line comments
   - Calls:
