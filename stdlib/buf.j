@@ -35,8 +35,7 @@ __buf_memmove(get_fn, set_fn, dst_ptr, src_ptr, count) {
     if (dst_ptr < src_ptr) {
         i = 0;
         while (i < count) {
-            val = get_fn(src_ptr, i);
-            set_fn(dst_ptr, i, val);
+            set_fn(dst_ptr, i, get_fn(src_ptr, i));
             i = i + 1;
         }
         return dst_ptr;
@@ -44,8 +43,7 @@ __buf_memmove(get_fn, set_fn, dst_ptr, src_ptr, count) {
     i = count;
     while (i > 0) {
         i = i - 1;
-        val = get_fn(src_ptr, i);
-        set_fn(dst_ptr, i, val);
+        set_fn(dst_ptr, i, get_fn(src_ptr, i));
     }
     return dst_ptr;
 }
@@ -89,9 +87,7 @@ _buf_memmove_u8(dst, src, count) {
     fullWords = count >> 3;
     remainder = count - (fullWords << 3);
     __buf_memmove(&_buf_get_u64, &_buf_set_u64, dst, src, fullWords);
-    dstBase = dst + (fullWords << 3);
-    srcBase = src + (fullWords << 3);
-    __buf_memmove(&_buf_get_u8, &_buf_set_u8, dstBase, srcBase, remainder);
+    __buf_memmove(&_buf_get_u8, &_buf_set_u8, dst + (fullWords << 3), src + (fullWords << 3), remainder);
     return dst;
 }
 
@@ -101,9 +97,7 @@ _buf_memmove_u16(dst, src, count) {
     fullWords = count >> 2;
     remainder = count - (fullWords << 2);
     __buf_memmove(&_buf_get_u64, &_buf_set_u64, dst, src, fullWords);
-    dstBase = dst + (fullWords << 3);
-    srcBase = src + (fullWords << 3);
-    __buf_memmove(&_buf_get_u16, &_buf_set_u16, dstBase, srcBase, remainder);
+    __buf_memmove(&_buf_get_u16, &_buf_set_u16, dst + (fullWords << 3), src + (fullWords << 3), remainder);
     return dst;
 }
 
@@ -113,9 +107,7 @@ _buf_memmove_u32(dst, src, count) {
     fullWords = count >> 1;
     remainder = count - (fullWords << 1);
     __buf_memmove(&_buf_get_u64, &_buf_set_u64, dst, src, fullWords);
-    dstBase = dst + (fullWords << 3);
-    srcBase = src + (fullWords << 3);
-    __buf_memmove(&_buf_get_u32, &_buf_set_u32, dstBase, srcBase, remainder);
+    __buf_memmove(&_buf_get_u32, &_buf_set_u32, dst + (fullWords << 3), src + (fullWords << 3), remainder);
     return dst;
 }
 

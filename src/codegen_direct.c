@@ -257,8 +257,16 @@ static void genCall(ByteBuf *text, PatchList *patches, Expr *e, VarNode *locals)
         emitMovRegReg(text, argRegs[i], REG_RAX);
     }
     for (int i = regProvided - 1; i >= 0; i--) {
+        // Save already-computed args (regs i+1..5) so arg expr won't clobber them (e.g. BIN_SHL uses rcx)
+        for (int j = i + 1; j < 6; j++) {
+            emitPushReg(text, argRegs[j]);
+        }
         genExpr(text, patches, e[0].call.args[i], locals);
         emitMovRegReg(text, argRegs[i], REG_RAX);
+        // Restore
+        for (int j = 5; j >= i + 1; j--) {
+            emitPopReg(text, argRegs[j]);
+        }
     }
 
     if (e[0].call.fn->kind == EX_VAR) {

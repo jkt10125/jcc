@@ -115,8 +115,16 @@ static void genExpr(FILE *out, Expr *e, VarList *locals) {
             // evaluate args into registers RDI, RSI, RDX, RCX, R8, R9
             const char *regs[] = {"%rdi","%rsi","%rdx","%rcx","%r8","%r9"};
             for (int i=0;i<e->call.argCount && i<6;i++) {
+                // Save already-computed args so nested call won't clobber them
+                for (int j = i - 1; j >= 0; j--) {
+                    fprintf(out, "    pushq %s\n", regs[j]);
+                }
                 genExpr(out, e->call.args[i], locals);
                 fprintf(out, "    movq %%rax, %s\n", regs[i]);
+                // Restore
+                for (int j = 0; j < i; j++) {
+                    fprintf(out, "    popq %s\n", regs[j]);
+                }
             }
             // if function expression is var (direct call)
             if (e->call.fn->kind==EX_VAR) {
