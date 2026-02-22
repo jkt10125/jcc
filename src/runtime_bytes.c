@@ -6,7 +6,6 @@
 // rt_get_int: syscall-only read + parse signed decimal from stdin
 // (old string syscall helpers removed; string helpers live in stdlib now)
 // rt_read_char: syscall-only read one byte
-// rt_str_buf_ptr: returns pointer to the static string buffer
 // rt_exit: syscall-only process exit
 //
 // Notes:
@@ -325,10 +324,5 @@ void emitRuntime(ByteBuf *text, PatchList *patches, RuntimeOffsets *outOffsets) 
     emitLeave(text);
     emitRet(text);
 
-    // rt_str_buf_ptr():
-    // returns pointer to the static buffer rt_str_buf.
-    outOffsets[0].strBufPtrOffset = text[0].size;
-    emitMovRegImm64Patch(text, patches, SEG_TEXT, REG_RAX, "rt_str_buf", 0);
-    emitRet(text);
 }
 

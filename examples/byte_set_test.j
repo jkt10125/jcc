@@ -1,5 +1,5 @@
 main() {
-    p = rt_str_buf_ptr();
+    p = buf;
     _buf_set_u8(p, 0, 56);
     _print_int(_buf_get_u8(p, 0));
     _print_char(10);

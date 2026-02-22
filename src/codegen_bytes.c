@@ -150,6 +150,14 @@ void emitAddRegReg(ByteBuf *b, Reg dst, Reg src) {
     emitU8(b, 0x01);
     emitModRm(b, 3, src & 7, dst & 7);
 }
+void emitAddRegImm8(ByteBuf *b, Reg dst, uint8_t imm) {
+    // add r/m64, imm8 : 48 83 /0 ib
+    int bb = (dst >> 3) & 1;
+    emitRexW(b, 0, 0, bb);
+    emitU8(b, 0x83);
+    emitModRm(b, 3, 0, dst & 7);
+    emitU8(b, imm);
+}
 void emitSubRegReg(ByteBuf *b, Reg dst, Reg src) {
     // sub r/m64, r64 : 48 29 /r
     int r = (src >> 3) & 1;
@@ -165,6 +173,14 @@ void emitAndRegReg(ByteBuf *b, Reg dst, Reg src) {
     emitRexW(b, r, 0, bb);
     emitU8(b, 0x21);
     emitModRm(b, 3, src & 7, dst & 7);
+}
+void emitAndRegImm32(ByteBuf *b, Reg reg, uint32_t imm) {
+    // and r/m64, imm32 : 48 81 /4 id
+    int bb = (reg >> 3) & 1;
+    emitRexW(b, 0, 0, bb);
+    emitU8(b, 0x81);
+    emitModRm(b, 3, 4, reg & 7);
+    emitU32(b, imm);
 }
 void emitOrRegReg(ByteBuf *b, Reg dst, Reg src) {
     // or r/m64, r64 : 48 09 /r
@@ -279,5 +295,27 @@ void emitMovzxRaxAl(ByteBuf *b) {
     emitU8(b, 0x0F);
     emitU8(b, 0xB6);
     emitU8(b, 0xC0);
+}
+void emitMovAlMemBase(ByteBuf *b, Reg base) {
+    // mov al, [base] : 8A /r  (reg=0 for AL, mod=00, rm=base)
+    int bb = (base >> 3) & 1;
+    if (bb) emitU8(b, rexByte(0, 0, 0, 1));
+    emitU8(b, 0x8A);
+    emitModRm(b, 0, 0, base & 7);
+}
+void emitMovMemBaseAl(ByteBuf *b, Reg base) {
+    // mov [base], al : 88 /r
+    int bb = (base >> 3) & 1;
+    if (bb) emitU8(b, rexByte(0, 0, 0, 1));
+    emitU8(b, 0x88);
+    emitModRm(b, 0, 0, base & 7);
+}
+void emitIncReg(ByteBuf *b, Reg reg) {
+    // inc r64 : FF /0
+    int r = (reg >> 3) & 1;
+    int bb = (reg >> 3) & 1;
+    emitRexW(b, r, 0, bb);
+    emitU8(b, 0xFF);
+    emitModRm(b, 3, 0, reg & 7);
 }
 

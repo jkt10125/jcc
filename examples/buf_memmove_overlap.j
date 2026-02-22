@@ -1,5 +1,5 @@
 main() {
-    p = rt_str_buf_ptr();
+    p = buf;
     p = p + 128;
     _buf_set_u8(p, 0, 65);
     _buf_set_u8(p, 1, 66);

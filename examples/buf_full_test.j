@@ -2,9 +2,9 @@
 // Exercises fullWords << 3 fix for u16 and u32.
 
 main() {
-    p = rt_str_buf_ptr();
+    p = buf;
     p = p + 128;
-    q = rt_str_buf_ptr();
+    q = buf;
     q = q + 256;
 
     // === u8: 10 bytes (1 full word + 2 remainder) ===

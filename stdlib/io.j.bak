@@ -49,6 +49,12 @@ __read_str_into_buf() {
     return __buf_size;
 }
 
+__read_str_copy(dst, len) {
+    n = (len + 8) / 8;
+    _buf_memset_u8(dst, 0, n * 8);
+    return _buf_memmove_u8(dst, buf, len + 1);
+}
+
 _print_str(x) {
     i = 0;
     while (1) {

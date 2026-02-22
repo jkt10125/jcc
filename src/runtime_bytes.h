@@ -10,7 +10,6 @@ typedef struct {
     size_t putCharOffset;
     size_t readCharOffset;
     size_t exitOffset;
-    size_t strBufPtrOffset;
 } RuntimeOffsets;
 
 void emitRuntime(ByteBuf *text, PatchList *patches, RuntimeOffsets *outOffsets);

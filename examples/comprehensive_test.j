@@ -140,7 +140,7 @@ main() {
     _print_char(10);
 
     // === 8. Buffer u8 get/set & string length & copy ===
-    p = rt_str_buf_ptr();
+    p = buf;
     _buf_set_u8(p, 0, 72);
     _buf_set_u8(p, 1, 105);
     _buf_set_u8(p, 2, 0);
@@ -150,14 +150,14 @@ main() {
     _print_char(10);
     _print_int(_str_len(p));
     _print_char(10);
-    q = rt_str_buf_ptr();
+    q = buf;
     q = q + 512;
     _str_cpy(q, p);
     _print_int(_str_len(q));
     _print_char(10);
 
     // === 9. Buffer u16/u32 packing (big-endian) ===
-    p2 = rt_str_buf_ptr();
+    p2 = buf;
     p2 = p2 + 64;
     _buf_set_u16(p2, 0, 4660);
     _buf_set_u16(p2, 1, 43981);
@@ -173,7 +173,7 @@ main() {
     _print_char(10);
 
     // === 10. buf_memset ===
-    p = rt_str_buf_ptr();
+    p = buf;
     p = p + 256;
     _buf_memset_u8(p, 65, 4);
     _print_int(_buf_get_u8(p, 0));
@@ -187,13 +187,13 @@ main() {
     _print_char(10);
 
     // === 11. buf_memmove (non-overlap) + manual overlap copy ===
-    p = rt_str_buf_ptr();
+    p = buf;
     p = p + 128;
     _buf_set_u8(p, 0, 65);
     _buf_set_u8(p, 1, 66);
     _buf_set_u8(p, 2, 67);
     _buf_set_u8(p, 3, 0);
-    q = rt_str_buf_ptr();
+    q = buf;
     q = q + 200;
     _buf_memmove_u8(q, p, 4);
     _print_int(_buf_get_u8(q, 0));

@@ -3,7 +3,7 @@
 
 #include "ast.h"
 
-int emitDirectElfProgram(const char *outPath, Program *prog, int memEntries);
+int emitDirectElfProgram(const char *outPath, Program *prog, int memEntries, int bufBytes);
 
 #endif
 

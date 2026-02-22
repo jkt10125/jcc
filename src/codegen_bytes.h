@@ -80,9 +80,11 @@ void emitMovRegMemDisp(ByteBuf *b, Reg dst, Reg base, int32_t disp);
 void emitMovMemDispReg(ByteBuf *b, Reg base, int32_t disp, Reg src);
 void emitLeaRegBaseIndexScaleDisp(ByteBuf *b, Reg dst, Reg base, Reg index, int scale, int32_t disp);
 void emitAddRegReg(ByteBuf *b, Reg dst, Reg src);
+void emitAddRegImm8(ByteBuf *b, Reg dst, uint8_t imm);
 void emitSubRegReg(ByteBuf *b, Reg dst, Reg src);
 void emitIMulRegReg(ByteBuf *b, Reg dst, Reg src);
 void emitAndRegReg(ByteBuf *b, Reg dst, Reg src);
+void emitAndRegImm32(ByteBuf *b, Reg reg, uint32_t imm);
 void emitOrRegReg(ByteBuf *b, Reg dst, Reg src);
 void emitXorRegReg(ByteBuf *b, Reg dst, Reg src);
 void emitShlRegCl(ByteBuf *b, Reg dst);
@@ -105,6 +107,9 @@ void emitTestRegReg(ByteBuf *b, Reg a, Reg bReg);
 void emitCmpRegReg(ByteBuf *b, Reg left, Reg right);
 void emitSetccAl(ByteBuf *b, uint8_t cc);
 void emitMovzxRaxAl(ByteBuf *b);
+void emitMovAlMemBase(ByteBuf *b, Reg base);
+void emitMovMemBaseAl(ByteBuf *b, Reg base);
+void emitIncReg(ByteBuf *b, Reg reg);
 
 #endif
 

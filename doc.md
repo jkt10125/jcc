@@ -1,6 +1,8 @@
 # Minimalist 64-bit Word Language — Detailed Documentation
 
-This document describes the language defined in `CompilerDesign.txt`, plus the pragmatic features that exist in the current `jcc` implementation (notably: a prepended standard library and bitwise operators).
+This document describes the language defined in `CompilerDesign.txt`, plus the pragmatic features that exist in the current `jcc` implementation.
+
+**Specification source:** `CompilerDesign.txt` defines the core language. This doc extends it with implementation details and stdlib documentation.
 
 The language is intentionally small: **one signed 64-bit integer type** and a **single global memory array** addressed by index.
 
@@ -50,6 +52,8 @@ The language is intentionally small: **one signed 64-bit integer type** and a **
   - 7.3 `_print_hex(x)`
   - 7.4 `_read_int()`
   - 7.5 `_exit(code)`
+  - 7.6 `_print_ln()` and `_print_int_ln(x)`
+  - 7a. Math and utilities (`_abs`, `_min`, `_max`)
 - **8. Examples**
   - 8.1 Minimal program
   - 8.2 Using `mem` as a table
@@ -57,7 +61,9 @@ The language is intentionally small: **one signed 64-bit integer type** and a **
   - 8.4 Recursion (language spec)
 - **9. Compile-time configuration**
   - 9.1 `mem` size (`jcc -m N`)
-- **10. Notes about the current `jcc` implementation**
+- **10. Memory layout and endianness**
+- **11. Spec vs implementation**
+- **12. Notes about the current `jcc` implementation**
 
 ---
 
@@ -119,7 +125,8 @@ Practical implications:
 
 - Stdlib functions are written in the same language, live under `stdlib/*.j`, and are compiled like normal code.
 - Stdlib functions use a `_` prefix (e.g. `_print_int`, `_read_int`, `_buf_get_u8`); internal helpers use `__` (e.g. `__mem_store`, `__index_store`, `__buf_get`, `__buf_set`).
-- The runtime (embedded assembly bytes) exposes low-level helper functions (`rt_put_int`, `rt_get_int`, `rt_put_char`, `rt_read_char`, `rt_exit`, `rt_str_buf_ptr`) that stdlib calls; user code typically calls the `_...` wrappers instead.
+- The runtime (embedded assembly bytes) exposes low-level helper functions (`rt_put_int`, `rt_get_int`, `rt_put_char`, `rt_read_char`, `rt_exit`) that stdlib calls; user code typically calls the `_...` wrappers instead.
+- `_alloc` is a builtin: calls are inlined at the call site (no function call, no `rt_alloca`).
 
 ---
 
@@ -133,10 +140,11 @@ Practical implications:
 
 Stdlib functions:
 
-- `_read_str()` reads a line from stdin (stops at newline), writes a terminating `0` byte, and returns a pointer to the buffer.
-  - Max length: 4096 bytes (longer input is truncated).
-  - The returned pointer refers to a **single static runtime buffer**; a later `_read_str()` call overwrites it.
+- `_read_str()` reads a line from stdin (stops at newline), allocates space on the stack for the string (including null terminator), copies the bytes into it, and returns the starting address of that stack-allocated buffer. The buffer is automatically freed when the caller returns. Max length is bounded by `__buf_size` (configurable via `-b`).
 - `_print_str(ptr)` prints bytes starting at `ptr` until it sees a `0` byte.
+- `_str_len(ptr)` returns the length of the null-terminated string at `ptr` (number of bytes before the first `0`).
+- `_str_cpy(dst, src)` copies the null-terminated string from `src` to `dst` (including the null terminator) and returns `dst`. It uses a direct loop rather than `_buf_memmove_u8` because the function-pointer-based `__buf_memmove` path can segfault when the destination is stack-allocated (see implementation notes).
+- `_str_cmp(a, b)` compares two null-terminated strings lexicographically; returns `0` if equal, `-1` if `a < b`, `1` if `a > b`.
 - `_buf_get_u8(ptr, idx)` returns the byte at the given index as an integer `0..255` (raw access).
 
 Input primitive:
@@ -160,8 +168,13 @@ Generic operations (take get/set function pointers):
 Convenience helpers (no function pointers):
 
 - `_buf_memmove_u8/u16/u32/u64(dst, src, count)`, `_buf_cmp_u8/u16/u32/u64(a, b, count)`, and `_buf_memset_u8/u16/u32/u64(dst, val, count)`.
+- `_buf_find_u8(ptr, val, count)` returns the index of the first byte equal to `val` in the buffer, or `-1` if not found.
 
-Example:
+Stack allocation (builtin):
+
+- `_alloc(numIntegers)` allocates `numIntegers * 8` bytes on the **caller's** stack frame (aligned to 16 bytes), and returns the address as an `int64`. The allocation is automatically freed when the caller returns. Use it to get a pointer for string storage or other buffers. Calls are inlined; the buffer is placed directly below the locals with no overlap.
+
+Example (read string):
 
 ```c
 main() {
@@ -672,6 +685,17 @@ The current `jcc` implementation reads from stdin using a runtime helper (`rt_ge
 
 `_exit(code);` terminates the process with the given exit code via a runtime helper (`rt_exit`).
 
+### 7.6 `_print_ln()` and `_print_int_ln(x)`
+
+- `_print_ln();` prints a newline.
+- `_print_int_ln(x);` prints the signed 64-bit integer `x` followed by a newline (equivalent to `_print_int(x); _print_char(0x0A);`).
+
+### 7a. Math and utilities (`stdlib/math.j`)
+
+- `_abs(x)` returns the absolute value of `x`.
+- `_min(a, b)` returns the smaller of `a` and `b`.
+- `_max(a, b)` returns the larger of `a` and `b`.
+
 ---
 
 ## 8. Examples
@@ -734,7 +758,7 @@ The size of the global memory array is specified at compile time.
 With `jcc` the interface is:
 
 ```bash
-jcc -m <memEntries> [ -o <out> ] <source>
+jcc -m <memEntries> [ -b <bufBytes> ] [ -o <out> ] <source>
 ```
 
 Example:
@@ -747,11 +771,68 @@ This sets `MEM_ENTRIES = 1024` and the generated executable contains:
 
 - `memArray[1024]` in `.data`
 
+### 9.2 Read buffer size (`jcc -b N`)
+
+The internal read buffer used by `_read_str()` and other I/O is configurable:
+
+```bash
+jcc -m <memEntries> [ -b <bufBytes> ] [ -o <out> ] <source>
+```
+
+- `-b <bufBytes>` sets the size of the static read buffer (default: 4096).
+- The buffer is accessible via the read-only variable `buf` (its address).
+- `__buf_size` is a read-only constant holding the buffer size in bytes.
+- You cannot assign to `buf`; it always points to the static buffer.
+
 ---
 
-## 10. Notes about the current `jcc` implementation
+## 10. Memory layout and endianness
 
-The **language specification** in `CompilerDesign.txt` is the source of truth for the language. The compiler in this repository is intentionally minimalist, but it now covers the essential spec features and includes a few pragmatic extensions.
+All storage in the current `jcc` implementation uses **little-endian** byte order.
+
+| Component | Layout |
+|-----------|--------|
+| `mem[i]` | Raw x86-64 load/store; little-endian (LSB at lowest address) |
+| buf u8/u16/u32 | Little-endian within each 64-bit word (byte 0 = LSB) |
+| buf u64 | Raw `ptr[idx]`; little-endian |
+| ELF data segment | `ELFDATA2LSB` (little-endian) |
+| Stack (locals) | Little-endian (x86-64) |
+
+This matches x86-64 and ARM (e.g. Raspberry Pi) Linux systems, which use little-endian by default.
+
+---
+
+## 11. Spec vs implementation
+
+`CompilerDesign.txt` defines the core language. The following table maps spec sections to implementation status:
+
+| Spec (CompilerDesign.txt) | Implementation |
+|---------------------------|----------------|
+| §1 Overview (single type, mem, functions) | ✓ Full |
+| §2 Program structure (main entry) | ✓ Full |
+| §3 Variables (params, locals, first-assign) | ✓ Full |
+| §4 Global memory (mem[index]) | ✓ Full |
+| §5 Functions (def, return, direct/indirect call) | ✓ Full |
+| §6 Statements (assign, return, if/else, while, blocks) | ✓ Full |
+| §7 Expressions (arithmetic, comparison, &, x[i], f(...)) | ✓ Full + bitwise `& \| ^ << >>` |
+| §8 Function pointers (&fn, store, indirect call) | ✓ Full |
+
+**Extensions beyond spec:**
+
+- Bitwise operators: `&`, `|`, `^`, `<<`, `>>` (logical right shift)
+- Hex literals: `0x` / `0X` prefix (e.g. `0xFF`, `0x1234ABCD`)
+- `break;` and `continue;` inside `while` loops
+- Standard library (stdlib) prepended from `stdlib/`: I/O, buffers, strings
+
+The example program in CompilerDesign.txt §9 is fully supported.
+
+---
+
+## 12. Notes about the current `jcc` implementation
+
+The **language specification** in `CompilerDesign.txt` is the source of truth for the language. The compiler in this repository is intentionally minimalist, but it now covers the essential spec features and includes pragmatic extensions.
+
+**Stack allocation + `_buf_memmove_u8`:** When `_buf_memmove_u8` is used with a stack-allocated destination (from `_alloc`), the `__buf_memmove` path that uses function pointers can segfault. As a workaround, `_str_cpy` uses a direct loop instead of `_buf_memmove_u8`.
 
 As of the current implementation:
 
@@ -769,7 +850,8 @@ As of the current implementation:
   - `if (...) { ... } else { ... }` (block bodies required by parser)
   - `while (...) { ... }` (block body required by parser)
   - `break;` and `continue;` (inside `while` loops only)
-  - standard library auto-prelude from `stdlib/` (functions like `_print_int`, `_print_char`, `_read_int`, `_exit`)
+  - hex literals (`0x` / `0X` prefix)
+  - standard library auto-prelude from `stdlib/` (`_print_int`, `_print_char`, `_print_hex`, `_print_ln`, `_print_int_ln`, `_read_int`, `_read_char`, `_read_str`, `_print_str`, `_str_len`, `_str_cpy`, `_str_cmp`, `_alloc`, `_abs`, `_min`, `_max`, `_exit`, buf helpers including `_buf_find_u8`)
   - `//` line comments
   - Calls:
     - more than 6 arguments supported (stack arguments)

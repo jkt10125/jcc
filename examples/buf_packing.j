@@ -1,5 +1,5 @@
 main() {
-    p = rt_str_buf_ptr();
+    p = buf;
 
     // u16 packing (big-endian): index 0 at bits 48-63, index 1 at 32-47
     _buf_set_u16(p, 0, 4660);   // 0x1234

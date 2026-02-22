@@ -7,7 +7,10 @@ _str_len(ptr) {
     }
 }
 
-_str_cpy(dst, src) {
-    return _buf_memmove_u8(dst, src, _str_len(src) + 1);
+_str_cmp(a, b) {
+    // it does not matter if we compare untill length
+    // of a or length of b the important thing is that
+    // strings must terminate with a 0 byte.
+    return _buf_cmp_u8(a, b, _str_len(a) + 1);
 }
 

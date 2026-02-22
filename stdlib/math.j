@@ -1,6 +1,8 @@
+// Math and utility helpers.
+
 _abs(x) {
-    if (x < 0) { return 0 - x; }
-    return x;
+    if (x >= 0) { return x; }
+    return 0 - x;
 }
 
 _min(a, b) {

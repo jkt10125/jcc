@@ -22,12 +22,15 @@ static int checkExpr(Expr *e, Def *defs, Def *funcs) {
         case EX_INT: return 1;
         case EX_VAR:
             if (strcmp(e->varName,"mem")==0) return 1;
+            if (strcmp(e->varName,"buf")==0) return 1;
+            if (strcmp(e->varName,"__buf_size")==0) return 1;
             if (!isDefined(defs, e->varName) && !isDefined(funcs, e->varName)) {
                 fprintf(stderr,"semantic error: use of undefined variable '%s'\n", e->varName);
                 return 0;
             }
             return 1;
         case EX_ADDR:
+            if (strcmp(e->addrName,"buf")==0) return 1;
             if (!isDefined(defs, e->addrName) && !isDefined(funcs, e->addrName)) {
                 fprintf(stderr,"semantic error: address-of undefined name '%s'\n", e->addrName);
                 return 0;
@@ -59,6 +62,10 @@ static int checkStmt(Stmt *s, Def **defs, Def *funcs, int inLoop) {
     if (s[0].kind==NODE_STMT_ASSIGN) {
         if (strcmp(s[0].assign.lhs, "mem") == 0) {
             fprintf(stderr, "semantic error: cannot assign to 'mem' (read-only)\n");
+            return 0;
+        }
+        if (strcmp(s[0].assign.lhs, "buf") == 0) {
+            fprintf(stderr, "semantic error: cannot assign to 'buf' (read-only)\n");
             return 0;
         }
         if (!checkExpr(s[0].assign.rhs, defs[0], funcs)) return 0;
@@ -126,7 +133,8 @@ int semaCheck(Program *p) {
     addDef(&funcs, "rt_put_char");
     addDef(&funcs, "rt_read_char");
     addDef(&funcs, "rt_exit");
-    addDef(&funcs, "rt_str_buf_ptr");
+    addDef(&funcs, "_alloc");  // builtin: inlined at call site
+    addDef(&funcs, "_read_str");  // builtin: expanded at call site
     // internal compiler-lowered helpers
     addDef(&funcs, "__mem_store");
     addDef(&funcs, "__index_store");

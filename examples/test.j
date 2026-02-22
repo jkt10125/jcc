@@ -6,15 +6,17 @@ print_char(a) {
 }
 
 main() {
-    a = 67;
-    a = a | (a << 8);
-    a = a | (a << 16);
-    a = a | (a << 32);
-    mem[0] = a;
-    //mem[0] = 0;
-    _buf_set_u8(mem, 8, 68);
-    _print_hex(mem[1]);
-    _buf_memmove_u8(mem + 4, mem, 9);
-    _print_hex(mem[1]);
+    h = 90;
+    a = _read_str();
+    print_char();
+    b = _read_str();
+
+    _print_hex(a);
+    _print_hex(b);
+
+    _print_hex(a[0]);
+    _print_hex((a + 8)[0]);
+    _print_hex(b[0]);
+    
     return 0;
 }
