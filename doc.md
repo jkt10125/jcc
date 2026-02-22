@@ -52,7 +52,7 @@ The language is intentionally small: **one signed 64-bit integer type** and a **
   - 7.3 `_print_hex(x)`
   - 7.4 `_read_int()`
   - 7.5 `_exit(code)`
-  - 7.6 `_print_ln()` and `_print_int_ln(x)`
+  - 7.6 Newlines (use `_print_char(0x0A)`)
   - 7a. Math and utilities (`_abs`, `_min`, `_max`)
 - **8. Examples**
   - 8.1 Minimal program
@@ -61,6 +61,7 @@ The language is intentionally small: **one signed 64-bit integer type** and a **
   - 8.4 Recursion (language spec)
 - **9. Compile-time configuration**
   - 9.1 `mem` size (`jcc -m N`)
+  - 9.2 Read buffer size (`jcc -b N`)
 - **10. Memory layout and endianness**
 - **11. Spec vs implementation**
 - **12. Notes about the current `jcc` implementation**
@@ -140,11 +141,11 @@ Practical implications:
 
 Stdlib functions:
 
-- `_read_str()` reads a line from stdin (stops at newline), allocates space on the stack for the string (including null terminator), copies the bytes into it, and returns the starting address of that stack-allocated buffer. The buffer is automatically freed when the caller returns. Max length is bounded by `__buf_size` (configurable via `-b`).
+- `_read_str()` reads a line from stdin (stops at newline), allocates space on the stack for the string (including null terminator), zero-initializes it, copies the bytes into it, and returns the starting address of that stack-allocated buffer. The buffer is automatically freed when the caller returns. Max length is bounded by `__buf_size` (configurable via `-b`).
 - `_print_str(ptr)` prints bytes starting at `ptr` until it sees a `0` byte.
 - `_str_len(ptr)` returns the length of the null-terminated string at `ptr` (number of bytes before the first `0`).
-- `_str_cpy(dst, src)` copies the null-terminated string from `src` to `dst` (including the null terminator) and returns `dst`. It uses a direct loop rather than `_buf_memmove_u8` because the function-pointer-based `__buf_memmove` path can segfault when the destination is stack-allocated (see implementation notes).
 - `_str_cmp(a, b)` compares two null-terminated strings lexicographically; returns `0` if equal, `-1` if `a < b`, `1` if `a > b`.
+- To copy a string: use `_buf_memmove_u8(dst, src, _str_len(src) + 1)` (there is no `_str_cpy`).
 - `_buf_get_u8(ptr, idx)` returns the byte at the given index as an integer `0..255` (raw access).
 
 Input primitive:
@@ -160,19 +161,19 @@ Packed buffers:
 
 All packing is **little-endian within each 64-bit word** and indices are **element indices** (for example u16 index 1 shifts by 16; u32 index 1 shifts by 32).
 
-Generic operations (take get/set function pointers):
+Generic operations (internal, `__` prefix):
 
-- `_buf_memmove(get_fn, set_fn, dst_ptr, src_ptr, count)` overlap-safe copy; e.g. `_buf_memmove(&_buf_get_u8, &_buf_set_u8, dst, src, n)`.
-- `_buf_cmp(get_fn, a_ptr, b_ptr, count)` returns 0 if equal, -1/1 otherwise; e.g. `_buf_cmp(&_buf_get_u64, a, b, n)`.
+- `__buf_memmove(get_fn, set_fn, dst_ptr, src_ptr, count)` overlap-safe copy; used internally by the typed helpers.
+- `__buf_cmp(get_fn, a_ptr, b_ptr, count)` returns 0 if equal, -1/1 otherwise; used internally by the typed helpers.
 
-Convenience helpers (no function pointers):
+User-facing convenience helpers (no function pointers):
 
 - `_buf_memmove_u8/u16/u32/u64(dst, src, count)`, `_buf_cmp_u8/u16/u32/u64(a, b, count)`, and `_buf_memset_u8/u16/u32/u64(dst, val, count)`.
 - `_buf_find_u8(ptr, val, count)` returns the index of the first byte equal to `val` in the buffer, or `-1` if not found.
 
 Stack allocation (builtin):
 
-- `_alloc(numIntegers)` allocates `numIntegers * 8` bytes on the **caller's** stack frame (aligned to 16 bytes), and returns the address as an `int64`. The allocation is automatically freed when the caller returns. Use it to get a pointer for string storage or other buffers. Calls are inlined; the buffer is placed directly below the locals with no overlap.
+- `_alloc(numIntegers)` allocates `numIntegers * 8` bytes on the **caller's** stack frame (aligned to 16 bytes), zero-initializes the memory, and returns the address as an `int64`. The allocation is automatically freed when the caller returns. Use it to get a pointer for string storage or other buffers. Calls are inlined; the buffer is placed directly below the locals with no overlap.
 
 Example (read string):
 
@@ -675,7 +676,7 @@ main() {
 
 ### 7.4 `_read_int()`
 
-`_read_int();` reads a signed decimal integer from stdin and returns it.
+`_read_int();` reads a signed decimal integer from stdin and returns it. On empty input or EOF, it returns `0`.
 
 The current `jcc` implementation reads from stdin using a runtime helper (`rt_get_int`) that uses:
 
@@ -685,10 +686,9 @@ The current `jcc` implementation reads from stdin using a runtime helper (`rt_ge
 
 `_exit(code);` terminates the process with the given exit code via a runtime helper (`rt_exit`).
 
-### 7.6 `_print_ln()` and `_print_int_ln(x)`
+### 7.6 Newlines
 
-- `_print_ln();` prints a newline.
-- `_print_int_ln(x);` prints the signed 64-bit integer `x` followed by a newline (equivalent to `_print_int(x); _print_char(0x0A);`).
+There is no dedicated newline function. Use `_print_char(0x0A);` to print a newline. To print an integer followed by a newline: `_print_int(x); _print_char(0x0A);`.
 
 ### 7a. Math and utilities (`stdlib/math.j`)
 
@@ -832,8 +832,6 @@ The example program in CompilerDesign.txt §9 is fully supported.
 
 The **language specification** in `CompilerDesign.txt` is the source of truth for the language. The compiler in this repository is intentionally minimalist, but it now covers the essential spec features and includes pragmatic extensions.
 
-**Stack allocation + `_buf_memmove_u8`:** When `_buf_memmove_u8` is used with a stack-allocated destination (from `_alloc`), the `__buf_memmove` path that uses function pointers can segfault. As a workaround, `_str_cpy` uses a direct loop instead of `_buf_memmove_u8`.
-
 As of the current implementation:
 
 - **Supported**:
@@ -851,12 +849,14 @@ As of the current implementation:
   - `while (...) { ... }` (block body required by parser)
   - `break;` and `continue;` (inside `while` loops only)
   - hex literals (`0x` / `0X` prefix)
-  - standard library auto-prelude from `stdlib/` (`_print_int`, `_print_char`, `_print_hex`, `_print_ln`, `_print_int_ln`, `_read_int`, `_read_char`, `_read_str`, `_print_str`, `_str_len`, `_str_cpy`, `_str_cmp`, `_alloc`, `_abs`, `_min`, `_max`, `_exit`, buf helpers including `_buf_find_u8`)
+  - standard library auto-prelude from `stdlib/` (`_print_int`, `_print_char`, `_print_hex`, `_read_int`, `_read_char`, `_read_str`, `_print_str`, `_str_len`, `_str_cmp`, `_alloc`, `_abs`, `_min`, `_max`, `_exit`, buf helpers including `_buf_find_u8`, `_buf_memmove_u8/u16/u32/u64`, `_buf_cmp_u8/u16/u32/u64`, `_buf_memset_u8/u16/u32/u64`)
   - `//` line comments
   - Calls:
     - more than 6 arguments supported (stack arguments)
     - missing arguments padded with 0 (see 5.9)
 - **Not yet implemented** (spec exists, compiler work may be needed):
-  - None of the essential items in `CompilerDesign.txt` remain missing. Future work is quality-of-implementation (better error messages, more static checks, optimizations, more tests).
+  - None of the essential items in `CompilerDesign.txt` remain missing.
+  - `_str_cpy`, `_print_ln`, `_print_int_ln` are not provided; use `_buf_memmove_u8` for string copy and `_print_char(0x0A)` for newlines.
+  - Future work is quality-of-implementation (better error messages, more static checks, optimizations, more tests).
 
 
