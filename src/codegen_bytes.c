@@ -99,6 +99,10 @@ void emitMovRegReg(ByteBuf *b, Reg dst, Reg src) {
     emitModRm(b, 3, src & 7, dst & 7);
 }
 void emitMovRegImm64(ByteBuf *b, Reg dst, uint64_t imm) {
+    if (imm == 0) {
+        emitZeroReg(b, dst);
+        return;
+    }
     int bb = (dst >> 3) & 1;
     emitU8(b, rexByte(1,0,0,bb));
     emitU8(b, (uint8_t)(0xB8 + (dst & 7)));
