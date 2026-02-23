@@ -13,7 +13,7 @@ The language is intentionally small: **one signed 64-bit integer type** and a **
 - **1. Core model**
   - 1.1 One type: signed 64-bit `int`
   - 1.2 Program = functions only
-  - 1.3 Global memory: `mem`
+  - 1.3 Global memory: `_mem`
   - 1.4 Standard library (`stdlib/`)
   - 1.5 Strings (null-terminated)
 - **2. Names, variables, and scoping**
@@ -44,7 +44,7 @@ The language is intentionally small: **one signed 64-bit integer type** and a **
   - 5.10 Argument count behavior (too few / too many)
 - **6. Function pointers**
   - 6.1 Taking function addresses
-  - 6.2 Storing in locals / `mem`
+  - 6.2 Storing in locals / `_mem`
   - 6.3 Indirect calls
 - **7. Standard library I/O**
   - 7.1 `_print_int(x)`
@@ -56,12 +56,12 @@ The language is intentionally small: **one signed 64-bit integer type** and a **
   - 7a. Math and utilities (`_abs`, `_min`, `_max`)
 - **8. Examples**
   - 8.1 Minimal program
-  - 8.2 Using `mem` as a table
-  - 8.3 Indirect calls via `mem`
+  - 8.2 Using `_mem` as a table
+  - 8.3 Indirect calls via `_mem`
   - 8.4 Recursion (language spec)
 - **9. Compile-time configuration**
-  - 9.1 `mem` size (`jcc -m N`)
-  - 9.2 Read buffer size (`jcc -b N`)
+  - 9.1 `_mem` size (`jcc -m N`)
+  - 9.2 Read buffer size (`jcc -b N`), `_buf`, `_buf_size`, `_mem_size`
 - **10. Memory layout and endianness**
 - **11. Spec vs implementation**
 - **12. Notes about the current `jcc` implementation**
@@ -90,31 +90,32 @@ This simplicity is intentional: no floats, no structs, no strings, no booleans a
 
 A program is just a list of function definitions.
 
-There are **no global variables** other than `mem` (see below).
+There are **no global variables** other than `_mem`, `_buf`, `_mem_size`, and `_buf_size` (see below).
 
-### 1.3 Global memory: `mem`
+### 1.3 Global memory: `_mem`
 
-The language has one implicit global memory array named `mem`.
+The language has one implicit global memory array named `_mem`.
 
 You access it with indexing syntax:
 
 ```c
-mem[0] = 123;
-x = mem[0];
+_mem[0] = 123;
+x = _mem[0];
 ```
 
 Conceptually:
 
-- `mem` is an array of signed 64-bit integers.
+- `_mem` is an array of signed 64-bit integers.
 - The **size is fixed** and provided at compile time.
 - You can store either “data” integers or “function pointer” integers in it.
 
-In the current `jcc` implementation, `mem` is modeled as:
+In the current `jcc` implementation, `_mem` is modeled as:
 
-- A global 64-bit value `mem` that holds the base address of `memArray`
+- A global 64-bit value `_mem` that holds the base address of `memArray`
+- `_mem_size` is a read-only value holding the number of entries
 - `memArray` is a static data segment array of `MEM_ENTRIES` elements
-- `mem[i]` means load/store at address `(mem + i*8)`
-- `mem` itself is **read-only**: you cannot assign to it (e.g. `mem = x` is a semantic error).
+- `_mem[i]` means load/store at address `(_mem + i*8)`
+- `_mem`, `_buf`, `_mem_size`, and `_buf_size` are **read-only**: you cannot assign to them.
 
 ---
 
@@ -141,7 +142,7 @@ Practical implications:
 
 Stdlib functions:
 
-- `_read_str()` reads a line from stdin (stops at newline), allocates space on the stack for the string (including null terminator), zero-initializes it, copies the bytes into it, and returns the starting address of that stack-allocated buffer. The buffer is automatically freed when the caller returns. Max length is bounded by `__buf_size` (configurable via `-b`).
+- `_read_str()` reads a line from stdin (stops at newline), allocates space on the stack for the string (including null terminator), zero-initializes it, copies the bytes into it, and returns the starting address of that stack-allocated buffer. The buffer is automatically freed when the caller returns. Max length is bounded by `_buf_size` (configurable via `-b`).
 - `_print_str(ptr)` prints bytes starting at `ptr` until it sees a `0` byte.
 - `_str_len(ptr)` returns the length of the null-terminated string at `ptr` (number of bytes before the first `0`).
 - `_str_cmp(a, b)` compares two null-terminated strings lexicographically; returns `0` if equal, `-1` if `a < b`, `1` if `a > b`.
@@ -297,7 +298,7 @@ This creates `x` as a local if it does not exist yet (see 2.2).
 Array assignment is also supported:
 
 ```c
-mem[0] = 123;
+_mem[0] = 123;
 ```
 
 ### 4.2 Return
@@ -315,7 +316,7 @@ Most commonly used for calls:
 ```c
 _print_int(123);
 f(1, 2);
-mem[0](5, 6); // indirect call as a statement
+_mem[0](5, 6); // indirect call as a statement
 ```
 
 ### 4.4 Blocks
@@ -367,7 +368,7 @@ main() {
 ### 5.1 Literals and identifiers
 
 - Integer literal: `0`, `123`, `-7`, `0xFF`, `0x1234ABCD` (hex: `0x` or `0X` prefix)
-- Identifier: `x`, `result`, `mem`, `add`
+- Identifier: `x`, `result`, `_mem`, `add`
 
 ### 5.2 Arithmetic operators
 
@@ -461,19 +462,19 @@ _print_int((2 + 3) * 4);   // 20
 Indexing reads an element:
 
 ```c
-x = mem[10];
+x = _mem[10];
 ```
 
 Indexing can be used on:
 
-- the global `mem`
+- the global `_mem`
 - locals that hold addresses/arrays (pointer-like `int64` values)
 
 Index expressions are integer expressions:
 
 ```c
 i = 3;
-mem[i + 2] = 99;   // writes mem[5]
+_mem[i + 2] = 99;   // writes _mem[5]
 ```
 
 #### 5.6.1 Local pointer indexing
@@ -495,7 +496,7 @@ main() {
 
 In the current `jcc` implementation:
 
-- `mem[i]` uses the global `mem` base pointer (special-cased).
+- `_mem[i]` uses the global `_mem` base pointer (special-cased).
 - Any other `base[i]` is treated as pointer indexing:
   - evaluate `base` → base address (int64)
   - evaluate `i` → index (int64)
@@ -514,7 +515,7 @@ The address-of operator produces an integer “address”:
 Example (function pointer):
 
 ```c
-mem[0] = &add;
+_mem[0] = &add;
 ```
 
 Example (local address-of):
@@ -555,11 +556,11 @@ f = &add;
 result = f(5, 10);
 ```
 
-Indirect via `mem`:
+Indirect via `_mem`:
 
 ```c
-mem[0] = &add;
-result = mem[0](5, 10);
+_mem[0] = &add;
+result = _mem[0](5, 10);
 ```
 
 ### 5.9 Calling convention notes (how args are passed)
@@ -583,7 +584,7 @@ The language spec does not explicitly define arity mismatch behavior. The curren
 More precisely:
 
 - For a **direct call** like `add(5)`, missing arguments are padded with `0` up to that function’s parameter count.
-- For an **indirect call** like `mem[0](5)`, the callee is not statically known, so `jcc` pads missing arguments with `0` up to the **maximum parameter count of any function in the program**. This keeps indirect calls predictable too.
+- For an **indirect call** like `_mem[0](5)`, the callee is not statically known, so `jcc` pads missing arguments with `0` up to the **maximum parameter count of any function in the program**. This keeps indirect calls predictable too.
 
 Example:
 
@@ -592,8 +593,8 @@ add3(a, b, c) { return a + b + c; }
 
 main() {
     _print_int(add3(5));      // prints 5 (treated as add3(5,0,0))
-    mem[0] = &add3;
-    _print_int(mem[0](7));    // prints 7 (pads missing args to 0)
+    _mem[0] = &add3;
+    _print_int(_mem[0](7));    // prints 7 (pads missing args to 0)
     return 0;
 }
 ```
@@ -612,12 +613,12 @@ Any function can be referenced as:
 
 This value is an integer address.
 
-### 6.2 Storing in locals / `mem`
+### 6.2 Storing in locals / `_mem`
 
 ```c
 main() {
     f = &add;
-    mem[0] = &add;
+    _mem[0] = &add;
     return 0;
 }
 ```
@@ -629,7 +630,7 @@ Once you have a function pointer integer, you can call it:
 ```c
 (f)(1, 2);     // allowed by spec
 f(1, 2);       // also used (depending on parser)
-mem[0](1, 2);  // common pattern
+_mem[0](1, 2);  // common pattern
 ```
 
 ---
@@ -652,7 +653,7 @@ main() {
 
 In the current `jcc` direct-ELF backend, printing is implemented via a runtime helper (`rt_put_int`) that uses Linux syscalls:
 
-- `sys_write(1, buf, len)` to stdout
+- `sys_write(1, _buf, len)` to stdout
 
 ### 7.2 `_print_char(x)`
 
@@ -680,7 +681,7 @@ main() {
 
 The current `jcc` implementation reads from stdin using a runtime helper (`rt_get_int`) that uses:
 
-- `sys_read(0, buf, n)` from stdin
+- `sys_read(0, _buf, n)` from stdin
 
 ### 7.5 `_exit(code)`
 
@@ -708,26 +709,26 @@ main() {
 }
 ```
 
-### 8.2 Using `mem` as a table
+### 8.2 Using `_mem` as a table
 
 ```c
 main() {
-    mem[0] = 10;
-    mem[1] = 20;
-    _print_int(mem[0] + mem[1]); // prints 30
-    return mem[0] + mem[1];
+    _mem[0] = 10;
+    _mem[1] = 20;
+    _print_int(_mem[0] + _mem[1]); // prints 30
+    return _mem[0] + _mem[1];
 }
 ```
 
-### 8.3 Indirect calls via `mem`
+### 8.3 Indirect calls via `_mem`
 
 ```c
 add(a, b) { return a + b; }
 
 main() {
-    mem[0] = &add;
-    _print_int(mem[0](5, 10)); // prints 15
-    return mem[0](5, 10);
+    _mem[0] = &add;
+    _print_int(_mem[0](5, 10)); // prints 15
+    return _mem[0](5, 10);
 }
 ```
 
@@ -751,7 +752,7 @@ main() {
 
 ## 9. Compile-time configuration
 
-### 9.1 `mem` size (`jcc -m N`)
+### 9.1 `_mem` size (`jcc -m N`)
 
 The size of the global memory array is specified at compile time.
 
@@ -780,9 +781,10 @@ jcc -m <memEntries> [ -b <bufBytes> ] [ -o <out> ] <source>
 ```
 
 - `-b <bufBytes>` sets the size of the static read buffer (default: 4096).
-- The buffer is accessible via the read-only variable `buf` (its address).
-- `__buf_size` is a read-only constant holding the buffer size in bytes.
-- You cannot assign to `buf`; it always points to the static buffer.
+- The buffer is accessible via the read-only variable `_buf` (its address).
+- `_buf_size` is a read-only constant holding the buffer size in bytes.
+- `_mem_size` holds the number of entries in `_mem`.
+- You cannot assign to `_buf`, `_mem`, `_buf_size`, or `_mem_size`; they are read-only.
 
 ---
 
@@ -792,9 +794,9 @@ All storage in the current `jcc` implementation uses **little-endian** byte orde
 
 | Component | Layout |
 |-----------|--------|
-| `mem[i]` | Raw x86-64 load/store; little-endian (LSB at lowest address) |
-| buf u8/u16/u32 | Little-endian within each 64-bit word (byte 0 = LSB) |
-| buf u64 | Raw `ptr[idx]`; little-endian |
+| `_mem[i]` | Raw x86-64 load/store; little-endian (LSB at lowest address) |
+| _buf u8/u16/u32 | Little-endian within each 64-bit word (byte 0 = LSB) |
+| _buf u64 | Raw `ptr[idx]`; little-endian |
 | ELF data segment | `ELFDATA2LSB` (little-endian) |
 | Stack (locals) | Little-endian (x86-64) |
 
@@ -808,10 +810,10 @@ This matches x86-64 and ARM (e.g. Raspberry Pi) Linux systems, which use little-
 
 | Spec (CompilerDesign.txt) | Implementation |
 |---------------------------|----------------|
-| §1 Overview (single type, mem, functions) | ✓ Full |
+| §1 Overview (single type, _mem, functions) | ✓ Full |
 | §2 Program structure (main entry) | ✓ Full |
 | §3 Variables (params, locals, first-assign) | ✓ Full |
-| §4 Global memory (mem[index]) | ✓ Full |
+| §4 Global memory (_mem[index]) | ✓ Full |
 | §5 Functions (def, return, direct/indirect call) | ✓ Full |
 | §6 Statements (assign, return, if/else, while, blocks) | ✓ Full |
 | §7 Expressions (arithmetic, comparison, &, x[i], f(...)) | ✓ Full + bitwise `& \| ^ << >>` |
@@ -835,8 +837,8 @@ The **language specification** in `CompilerDesign.txt` is the source of truth fo
 As of the current implementation:
 
 - **Supported**:
-  - Function definitions and calls (direct + indirect through `mem`)
-  - `mem[index]` load and `mem[index] = value` store
+  - Function definitions and calls (direct + indirect through `_mem`)
+  - `_mem[index]` load and `_mem[index] = value` store
   - Local pointer features:
     - `&x` for locals (address-of local slot)
     - `p[i]` load and `p[i] = v` store (pointer indexing)
@@ -849,7 +851,7 @@ As of the current implementation:
   - `while (...) { ... }` (block body required by parser)
   - `break;` and `continue;` (inside `while` loops only)
   - hex literals (`0x` / `0X` prefix)
-  - standard library auto-prelude from `stdlib/` (`_print_int`, `_print_char`, `_print_hex`, `_read_int`, `_read_char`, `_read_str`, `_print_str`, `_str_len`, `_str_cmp`, `_alloc`, `_abs`, `_min`, `_max`, `_exit`, buf helpers including `_buf_find_u8`, `_buf_memmove_u8/u16/u32/u64`, `_buf_cmp_u8/u16/u32/u64`, `_buf_memset_u8/u16/u32/u64`)
+  - standard library auto-prelude from `stdlib/` (`_print_int`, `_print_char`, `_print_hex`, `_read_int`, `_read_char`, `_read_str`, `_print_str`, `_str_len`, `_str_cmp`, `_alloc`, `_abs`, `_min`, `_max`, `_exit`, _buf helpers including `_buf_find_u8`, `_buf_memmove_u8/u16/u32/u64`, `_buf_cmp_u8/u16/u32/u64`, `_buf_memset_u8/u16/u32/u64`)
   - `//` line comments
   - Calls:
     - more than 6 arguments supported (stack arguments)

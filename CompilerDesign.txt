@@ -3,12 +3,12 @@
 ## 1. Overview
 
 - Single 64-bit signed integer type (`int`) for all values.
-- One implicit global memory array `mem`, fixed size.
+- One implicit global memory array `_mem`, fixed size.
 - Only functions allowed at global scope.
 - Functions always return an integer.
 - Variables inside functions are implicitly created on first assignment.
 - Single local scope per function (blocks `{}` do not create new scopes).
-- Array access `x[i]` is supported for both locals and the global `mem`.
+- Array access `x[i]` is supported for both locals and the global `_mem`.
 - Address-of operator `&` is supported.
 - Functions can be referenced as integers (function pointers).
 - Recursion and indirect function calls are allowed.
@@ -17,7 +17,7 @@
 
 - A program consists of a sequence of function definitions.
 - One function must be named `main()` as the entry point.
-- No global variables other than `mem`.
+- No global variables other than `_mem`, `_buf`, `_mem_size`, `_buf_size`.
 
 ## 3. Variables
 
@@ -27,9 +27,9 @@
 
 ## 4. Global Memory
 
-- `mem` is a preallocated array of 64-bit integers.
+- `_mem` is a preallocated array of 64-bit integers.
 - Size is fixed and specified at compile time.
-- Accessible via `mem[index]`.
+- Accessible via `_mem[index]`.
 
 ## 5. Functions
 
@@ -37,7 +37,7 @@
 - No keyword is needed to define a function.
 - All functions return integers.
 - Functions can be called directly or via a function pointer (`int` storing address).
-- Function pointers can be stored in locals or `mem`.
+- Function pointers can be stored in locals or `_mem`.
 
 ## 6. Statements
 
@@ -62,7 +62,7 @@
 ## 8. Function Pointers
 
 - Any function can be referenced as `&function_name`.
-- Function pointers can be stored in locals or `mem`.
+- Function pointers can be stored in locals or `_mem`.
 - Indirect calls: `(function_pointer)(args)`.
 
 ## 9. Example Program
@@ -72,14 +72,14 @@ add(a, b) {
 }
 
 main() {
-    mem[0] = &add;
+    _mem[0] = &add;
     x = 5;
     y = 10;
-    result = mem[0](x, y) + mem[1];
+    result = _mem[0](x, y) + _mem[1];
     return result;
 }
 
 - Uses implicit locals: `x`, `y`, `result`.
-- Stores function pointer in `mem`.
+- Stores function pointer in `_mem`.
 - Performs indirect function call.
 - Returns 15.

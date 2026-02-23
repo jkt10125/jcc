@@ -88,7 +88,7 @@ static void genExpr(ByteBuf *text, PatchList *patches, Expr *e, VarNode *locals)
 
 static void genMemLoad(ByteBuf *text, PatchList *patches, Expr *indexExpr, VarNode *locals) {
     genExpr(text, patches, indexExpr, locals);          // rax = index
-    emitMovRegImm64Patch(text, patches, SEG_TEXT, REG_R10, "mem", 0); // r10 = &mem
+    emitMovRegImm64Patch(text, patches, SEG_TEXT, REG_R10, "_mem", 0); // r10 = &_mem
     emitMovRegMemDisp(text, REG_R10, REG_R10, 0);       // r10 = mem base
     emitLeaRegBaseIndexScaleDisp(text, REG_R11, REG_R10, REG_RAX, 8, 0); // r11 = base + index*8
     emitMovRegMemDisp(text, REG_RAX, REG_R11, 0);       // rax = *(r11)
@@ -100,7 +100,7 @@ static void genMemStore(ByteBuf *text, PatchList *patches, Expr *indexExpr, Expr
     genExpr(text, patches, valueExpr, locals);          // rax = value
     emitMovRegReg(text, REG_R11, REG_RAX);              // r11 = value
     emitPopReg(text, REG_RAX);                          // rax = index
-    emitMovRegImm64Patch(text, patches, SEG_TEXT, REG_R10, "mem", 0); // r10 = &mem
+    emitMovRegImm64Patch(text, patches, SEG_TEXT, REG_R10, "_mem", 0); // r10 = &_mem
     emitMovRegMemDisp(text, REG_R10, REG_R10, 0);       // r10 = mem base
     emitLeaRegBaseIndexScaleDisp(text, REG_R10, REG_R10, REG_RAX, 8, 0); // r10 = base + index*8
     emitMovMemDispReg(text, REG_R10, 0, REG_R11);
@@ -218,7 +218,7 @@ static void genCall(ByteBuf *text, PatchList *patches, Expr *e, VarNode *locals)
         emitMovRegImm64(text, REG_RAX, 8);
         emitAddRegReg(text, REG_R11, REG_RAX);
         emitShrRegImm8(text, REG_R11, 3);
-        emitCmpRegImm8(text, REG_R11, 0);
+        emitTestRegReg(text, REG_R11, REG_R11);  /* cmp reg,0 -> test reg,reg (shorter) */
         size_t jgSkip = emitJccRel32Placeholder(text, 0x7);
         emitMovRegImm64(text, REG_R11, 1);
         int32_t relSkip = (int32_t)((int64_t)text[0].size - (int64_t)(jgSkip + 4));
@@ -231,7 +231,7 @@ static void genCall(ByteBuf *text, PatchList *patches, Expr *e, VarNode *locals)
         emitMovRegReg(text, REG_RCX, REG_R11);
         emitZeroReg(text, REG_RAX);
         size_t zeroLoop = text[0].size;
-        emitCmpRegImm8(text, REG_RCX, 0);
+        emitTestRegReg(text, REG_RCX, REG_RCX);
         size_t zeroDone = emitJccRel32Placeholder(text, 0x4);
         emitMovMemDispReg(text, REG_R10, 0, REG_RAX);
         emitAddRegImm8(text, REG_R10, 8);
@@ -244,7 +244,7 @@ static void genCall(ByteBuf *text, PatchList *patches, Expr *e, VarNode *locals)
         // 4. inline copy: full words first, then remainder bytes (like _buf_memmove_u8)
         // r8=dst, r9=src(buf), count=len+1, fullWords=count>>3, remainder=count-(fullWords<<3)
         emitMovRegReg(text, REG_R8, REG_R10);
-        emitMovRegImm64Patch(text, patches, SEG_TEXT, REG_R9, "buf", 0);
+        emitMovRegImm64Patch(text, patches, SEG_TEXT, REG_R9, "_buf", 0);
         emitMovRegReg(text, REG_R11, REG_RSI);
         emitMovRegImm64(text, REG_RAX, 1);
         emitAddRegReg(text, REG_R11, REG_RAX);
@@ -255,7 +255,7 @@ static void genCall(ByteBuf *text, PatchList *patches, Expr *e, VarNode *locals)
         emitSubRegReg(text, REG_R11, REG_RAX);
         // r11=remainder (byte loop count), rcx=fullWords (word loop count)
         size_t wordLoop = text[0].size;
-        emitCmpRegImm8(text, REG_RCX, 0);
+        emitTestRegReg(text, REG_RCX, REG_RCX);
         size_t wordDone = emitJccRel32Placeholder(text, 0x4);
         emitMovRegMemDisp(text, REG_RAX, REG_R9, 0);
         emitMovMemDispReg(text, REG_R8, 0, REG_RAX);
@@ -267,7 +267,7 @@ static void genCall(ByteBuf *text, PatchList *patches, Expr *e, VarNode *locals)
         patchRel32(text, wordJmp, (int32_t)((int64_t)wordLoop - (int64_t)(wordJmp + 4)));
         patchRel32(text, wordDone, (int32_t)((int64_t)text[0].size - (int64_t)(wordDone + 4)));
         size_t byteLoop = text[0].size;
-        emitCmpRegImm8(text, REG_R11, 0);
+        emitTestRegReg(text, REG_R11, REG_R11);
         size_t byteDone = emitJccRel32Placeholder(text, 0x4);
         emitMovAlMemBase(text, REG_R9);
         emitMovMemBaseAl(text, REG_R8);
@@ -299,7 +299,7 @@ static void genCall(ByteBuf *text, PatchList *patches, Expr *e, VarNode *locals)
             emitMovRegReg(text, REG_R8, REG_R10);
             emitZeroReg(text, REG_RAX);
             zl = text[0].size;
-            emitCmpRegImm8(text, REG_R11, 0);
+            emitTestRegReg(text, REG_R11, REG_R11);
             ze = emitJccRel32Placeholder(text, 0x4);
             emitMovMemDispReg(text, REG_R8, 0, REG_RAX);
             emitMovRegImm64(text, REG_R9, 8);
@@ -406,17 +406,22 @@ static void genExpr(ByteBuf *text, PatchList *patches, Expr *e, VarNode *locals)
         case EX_VAR: {
             int idx = findVarIndex(locals, e[0].varName);
             if (idx >= 0) { emitLoadLocal(text, idx); return; }
-            if (strcmp(e[0].varName, "mem") == 0) {
-                emitMovRegImm64Patch(text, patches, SEG_TEXT, REG_RAX, "mem", 0);
+            if (strcmp(e[0].varName, "_mem") == 0) {
+                emitMovRegImm64Patch(text, patches, SEG_TEXT, REG_RAX, "_mem", 0);
                 emitMovRegMemDisp(text, REG_RAX, REG_RAX, 0);
                 return;
             }
-            if (strcmp(e[0].varName, "buf") == 0) {
-                emitMovRegImm64Patch(text, patches, SEG_TEXT, REG_RAX, "buf", 0);
+            if (strcmp(e[0].varName, "_buf") == 0) {
+                emitMovRegImm64Patch(text, patches, SEG_TEXT, REG_RAX, "_buf", 0);
                 return;
             }
-            if (strcmp(e[0].varName, "__buf_size") == 0) {
-                emitMovRegImm64Patch(text, patches, SEG_TEXT, REG_RAX, "__buf_size", 0);
+            if (strcmp(e[0].varName, "_mem_size") == 0) {
+                emitMovRegImm64Patch(text, patches, SEG_TEXT, REG_RAX, "_mem_size", 0);
+                emitMovRegMemDisp(text, REG_RAX, REG_RAX, 0);
+                return;
+            }
+            if (strcmp(e[0].varName, "_buf_size") == 0) {
+                emitMovRegImm64Patch(text, patches, SEG_TEXT, REG_RAX, "_buf_size", 0);
                 emitMovRegMemDisp(text, REG_RAX, REG_RAX, 0);
                 return;
             }
@@ -429,15 +434,15 @@ static void genExpr(ByteBuf *text, PatchList *patches, Expr *e, VarNode *locals)
                 int idx = findVarIndex(locals, e[0].addrName);
                 if (idx >= 0) {
                     emitLeaRegBaseDisp(text, REG_RAX, REG_RBP, -(int32_t)(8 * (idx + 1)));
-                } else if (strcmp(e[0].addrName, "buf") == 0) {
-                    emitMovRegImm64Patch(text, patches, SEG_TEXT, REG_RAX, "buf", 0);
+                } else if (strcmp(e[0].addrName, "_buf") == 0) {
+                    emitMovRegImm64Patch(text, patches, SEG_TEXT, REG_RAX, "_buf", 0);
                 } else {
                     emitMovRegImm64Patch(text, patches, SEG_TEXT, REG_RAX, e[0].addrName, 0);
                 }
             }
             return;
         case EX_INDEX:
-            if (e[0].index.arr->kind == EX_VAR && strcmp(e[0].index.arr->varName, "mem") == 0) {
+            if (e[0].index.arr->kind == EX_VAR && strcmp(e[0].index.arr->varName, "_mem") == 0) {
                 genMemLoad(text, patches, e[0].index.index, locals);
                 return;
             }
@@ -641,29 +646,36 @@ int emitDirectElfProgram(const char *outPath, Program *prog, int memEntries, int
         genFunctionBytes(&text, &patches, f);
     }
 
-    // data: [mem (u64)] [memArray (i64[memEntries])] [buf (bytes[bufBytes])] [__buf_size (u64)]
+    // data: [_mem (u64)] [_mem_size (u64)] [memArray (i64[memEntries])] [_buf (bytes[bufBytes])] [_buf_size (u64)]
     uint64_t bufArraySize = (uint64_t)bufBytes;
-    uint64_t bufSizeSlotSize = 8ull;
-    uint64_t dataSize = 8ull + (uint64_t)memEntries * 8ull + bufArraySize + bufSizeSlotSize;
+    uint64_t slotSize = 8ull;
+    uint64_t dataSize = slotSize * 4 + (uint64_t)memEntries * 8ull + bufArraySize;
     byteBufReserve(&data, dataSize);
     for (uint64_t i=0;i<dataSize;i++) emitU8(&data, 0);
 
     uint64_t dataVaddr = computeDataVaddr(text.size);
     uint64_t memVaddr = dataVaddr;
-    uint64_t memArrayVaddr = dataVaddr + 8;
+    uint64_t memSizeVaddr = dataVaddr + 8;
+    uint64_t memArrayVaddr = dataVaddr + 16;
     uint64_t bufArrayVaddr = memArrayVaddr + (uint64_t)memEntries * 8ull;
     uint64_t bufSizeSlotVaddr = bufArrayVaddr + bufArraySize;
-    symbolSet(&symbols, "mem", memVaddr);
+    symbolSet(&symbols, "_mem", memVaddr);
+    symbolSet(&symbols, "_mem_size", memSizeVaddr);
     symbolSet(&symbols, "memArray", memArrayVaddr);
-    symbolSet(&symbols, "buf", bufArrayVaddr);
-    symbolSet(&symbols, "__buf_size", bufSizeSlotVaddr);
+    symbolSet(&symbols, "_buf", bufArrayVaddr);
+    symbolSet(&symbols, "_buf_size", bufSizeSlotVaddr);
 
-    // initialize mem = memArrayVaddr
+    // initialize _mem = memArrayVaddr
     memcpy(&data.data[0], &memArrayVaddr, 8);
-    // initialize __buf_size = bufBytes
+    // initialize _mem_size = memEntries
+    {
+        uint64_t memEntries64 = (uint64_t)memEntries;
+        memcpy(&data.data[8], &memEntries64, 8);
+    }
+    // initialize _buf_size = bufBytes
     {
         uint64_t bufBytes64 = (uint64_t)bufBytes;
-        memcpy(&data.data[dataSize - 8], &bufBytes64, 8);
+        memcpy(&data.data[(size_t)(bufSizeSlotVaddr - dataVaddr)], &bufBytes64, 8);
     }
 
     applyPatches(&text, &data, &patches, &symbols);

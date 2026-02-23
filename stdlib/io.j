@@ -36,17 +36,17 @@ _read_char() {
 
 __read_str_into_buf() {
     i = 0;
-    while (i < __buf_size) {
+    while (i < _buf_size) {
         c = _read_char();
         if ((c <= 0) | (c == 0x0A)) {
-            _buf_set_u8(buf, i, 0);
+            _buf_set_u8(_buf, i, 0);
             return i;
         }
-        _buf_set_u8(buf, i, c);
+        _buf_set_u8(_buf, i, c);
         i = i + 1;
     }
-    _buf_set_u8(buf, __buf_size, 0);
-    return __buf_size;
+    _buf_set_u8(_buf, _buf_size, 0);
+    return _buf_size;
 }
 
 _print_str(x) {

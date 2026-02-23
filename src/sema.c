@@ -21,16 +21,17 @@ static int checkExpr(Expr *e, Def *defs, Def *funcs) {
     switch (e->kind) {
         case EX_INT: return 1;
         case EX_VAR:
-            if (strcmp(e->varName,"mem")==0) return 1;
-            if (strcmp(e->varName,"buf")==0) return 1;
-            if (strcmp(e->varName,"__buf_size")==0) return 1;
+            if (strcmp(e->varName,"_mem")==0) return 1;
+            if (strcmp(e->varName,"_buf")==0) return 1;
+            if (strcmp(e->varName,"_mem_size")==0) return 1;
+            if (strcmp(e->varName,"_buf_size")==0) return 1;
             if (!isDefined(defs, e->varName) && !isDefined(funcs, e->varName)) {
                 fprintf(stderr,"semantic error: use of undefined variable '%s'\n", e->varName);
                 return 0;
             }
             return 1;
         case EX_ADDR:
-            if (strcmp(e->addrName,"buf")==0) return 1;
+            if (strcmp(e->addrName,"_buf")==0) return 1;
             if (!isDefined(defs, e->addrName) && !isDefined(funcs, e->addrName)) {
                 fprintf(stderr,"semantic error: address-of undefined name '%s'\n", e->addrName);
                 return 0;
@@ -60,12 +61,20 @@ static int checkStmtList(Stmt *s, Def **defs, Def *funcs, int inLoop) {
 static int checkStmt(Stmt *s, Def **defs, Def *funcs, int inLoop) {
     if (!s) return 1;
     if (s[0].kind==NODE_STMT_ASSIGN) {
-        if (strcmp(s[0].assign.lhs, "mem") == 0) {
-            fprintf(stderr, "semantic error: cannot assign to 'mem' (read-only)\n");
+        if (strcmp(s[0].assign.lhs, "_mem") == 0) {
+            fprintf(stderr, "semantic error: cannot assign to '_mem' (read-only)\n");
             return 0;
         }
-        if (strcmp(s[0].assign.lhs, "buf") == 0) {
-            fprintf(stderr, "semantic error: cannot assign to 'buf' (read-only)\n");
+        if (strcmp(s[0].assign.lhs, "_buf") == 0) {
+            fprintf(stderr, "semantic error: cannot assign to '_buf' (read-only)\n");
+            return 0;
+        }
+        if (strcmp(s[0].assign.lhs, "_mem_size") == 0) {
+            fprintf(stderr, "semantic error: cannot assign to '_mem_size' (read-only)\n");
+            return 0;
+        }
+        if (strcmp(s[0].assign.lhs, "_buf_size") == 0) {
+            fprintf(stderr, "semantic error: cannot assign to '_buf_size' (read-only)\n");
             return 0;
         }
         if (!checkExpr(s[0].assign.rhs, defs[0], funcs)) return 0;

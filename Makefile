@@ -12,7 +12,5 @@ clean:
 	rm -f jcc prog.s prog.o rt.o a.out
 
 test: jcc
-	./jcc -m 1024 examples/add.j
-	./a.out
-	echo exit:$?
+	./tests/run_tests.sh
 

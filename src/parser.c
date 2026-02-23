@@ -265,7 +265,7 @@ static Stmt *parseStmt(Parser *p) {
                 next(p);
                 Expr *rhs = parseExpr(p);
                 expect(p, TOK_SEMI);
-                if (strcmp(name, "mem") == 0) {
+                if (strcmp(name, "_mem") == 0) {
                     Expr **args = malloc(sizeof(Expr*)*2);
                     args[0] = idx; args[1] = rhs;
                     Expr *storeCall = newCallExpr(newVarExpr(strDup("__mem_store")), args, 2);
