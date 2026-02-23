@@ -79,6 +79,10 @@ size_t emitMovRegImm64Patch(ByteBuf *b, PatchList *p, Segment seg, Reg dst, cons
 void emitMovRegMemDisp(ByteBuf *b, Reg dst, Reg base, int32_t disp);
 void emitMovMemDispReg(ByteBuf *b, Reg base, int32_t disp, Reg src);
 void emitLeaRegBaseIndexScaleDisp(ByteBuf *b, Reg dst, Reg base, Reg index, int scale, int32_t disp);
+void emitLeaRegBaseDisp(ByteBuf *b, Reg dst, Reg base, int32_t disp);
+void emitZeroReg(ByteBuf *b, Reg reg);
+void emitShrRegImm8(ByteBuf *b, Reg reg, uint8_t imm);
+void emitShlRegImm8(ByteBuf *b, Reg reg, uint8_t imm);
 void emitAddRegReg(ByteBuf *b, Reg dst, Reg src);
 void emitAddRegImm8(ByteBuf *b, Reg dst, uint8_t imm);
 void emitSubRegReg(ByteBuf *b, Reg dst, Reg src);

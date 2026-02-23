@@ -104,7 +104,7 @@ static void genMemStore(ByteBuf *text, PatchList *patches, Expr *indexExpr, Expr
     emitMovRegMemDisp(text, REG_R10, REG_R10, 0);       // r10 = mem base
     emitLeaRegBaseIndexScaleDisp(text, REG_R10, REG_R10, REG_RAX, 8, 0); // r10 = base + index*8
     emitMovMemDispReg(text, REG_R10, 0, REG_R11);
-    emitMovRegImm64(text, REG_RAX, 0);
+    emitZeroReg(text, REG_RAX);
 }
 
 static void genIndexLoad(ByteBuf *text, PatchList *patches, Expr *baseExpr, Expr *indexExpr, VarNode *locals) {
@@ -127,7 +127,7 @@ static void genIndexStore(ByteBuf *text, PatchList *patches, Expr *baseExpr, Exp
     emitPopReg(text, REG_R10); // r10 = base
     emitLeaRegBaseIndexScaleDisp(text, REG_R10, REG_R10, REG_RAX, 8, 0);
     emitMovMemDispReg(text, REG_R10, 0, REG_R11);
-    emitMovRegImm64(text, REG_RAX, 0);
+    emitZeroReg(text, REG_RAX);
 }
 
 static void genBinOp(ByteBuf *text, PatchList *patches, Expr *e, VarNode *locals) {
@@ -145,9 +145,8 @@ static void genBinOp(ByteBuf *text, PatchList *patches, Expr *e, VarNode *locals
         return;
     }
     if (op == BIN_SUB) {
-        emitMovRegReg(text, REG_R10, REG_R11);
-        emitSubRegReg(text, REG_R10, REG_RAX);
-        emitMovRegReg(text, REG_RAX, REG_R10);
+        emitSubRegReg(text, REG_R11, REG_RAX);
+        emitMovRegReg(text, REG_RAX, REG_R11);
         return;
     }
     if (op == BIN_DIV || op == BIN_MOD) {
@@ -195,7 +194,7 @@ static void genBinOp(ByteBuf *text, PatchList *patches, Expr *e, VarNode *locals
         emitMovzxRaxAl(text);
         return;
     }
-    emitMovRegImm64(text, REG_RAX, 0);
+    emitZeroReg(text, REG_RAX);
 }
 
 static void genCall(ByteBuf *text, PatchList *patches, Expr *e, VarNode *locals) {
@@ -218,22 +217,19 @@ static void genCall(ByteBuf *text, PatchList *patches, Expr *e, VarNode *locals)
         emitMovRegReg(text, REG_R11, REG_RAX);
         emitMovRegImm64(text, REG_RAX, 8);
         emitAddRegReg(text, REG_R11, REG_RAX);
-        emitMovRegImm64(text, REG_RCX, 3);
-        emitShrRegCl(text, REG_R11);
+        emitShrRegImm8(text, REG_R11, 3);
         emitCmpRegImm8(text, REG_R11, 0);
         size_t jgSkip = emitJccRel32Placeholder(text, 0x7);
         emitMovRegImm64(text, REG_R11, 1);
         int32_t relSkip = (int32_t)((int64_t)text[0].size - (int64_t)(jgSkip + 4));
         patchRel32(text, jgSkip, relSkip);
         // 3. alloc n*8 bytes (no 16-byte rounding; no call after alloc)
-        emitMovRegImm64(text, REG_RCX, 3);
-        emitShlRegCl(text, REG_R11);
+        emitShlRegImm8(text, REG_R11, 3);
         emitSubRegReg(text, REG_RSP, REG_R11);
         emitMovRegReg(text, REG_R10, REG_RSP);
+        emitShrRegImm8(text, REG_R11, 3);
         emitMovRegReg(text, REG_RCX, REG_R11);
-        emitMovRegImm64(text, REG_RAX, 3);
-        emitShrRegCl(text, REG_RCX);
-        emitXorRegReg(text, REG_RAX, REG_RAX);
+        emitZeroReg(text, REG_RAX);
         size_t zeroLoop = text[0].size;
         emitCmpRegImm8(text, REG_RCX, 0);
         size_t zeroDone = emitJccRel32Placeholder(text, 0x4);
@@ -253,14 +249,10 @@ static void genCall(ByteBuf *text, PatchList *patches, Expr *e, VarNode *locals)
         emitMovRegImm64(text, REG_RAX, 1);
         emitAddRegReg(text, REG_R11, REG_RAX);
         emitMovRegReg(text, REG_RAX, REG_R11);
-        emitMovRegImm64(text, REG_RCX, 3);
-        emitShrRegCl(text, REG_RAX);
+        emitShrRegImm8(text, REG_RAX, 3);
         emitMovRegReg(text, REG_RCX, REG_RAX);
-        emitMovRegReg(text, REG_RDX, REG_RAX);
-        emitMovRegImm64(text, REG_RCX, 3);
-        emitShlRegCl(text, REG_RAX);
+        emitShlRegImm8(text, REG_RAX, 3);
         emitSubRegReg(text, REG_R11, REG_RAX);
-        emitMovRegReg(text, REG_RCX, REG_RDX);
         // r11=remainder (byte loop count), rcx=fullWords (word loop count)
         size_t wordLoop = text[0].size;
         emitCmpRegImm8(text, REG_RCX, 0);
@@ -295,8 +287,7 @@ static void genCall(ByteBuf *text, PatchList *patches, Expr *e, VarNode *locals)
             size_t zl, ze, zb;
             genExpr(text, patches, e[0].call.args[0], locals);  // rax = numIntegers
             emitMovRegReg(text, REG_R11, REG_RAX);             // r11 = numIntegers
-            emitMovRegImm64(text, REG_RCX, 3);
-            emitShlRegCl(text, REG_R11);                        // r11 = numIntegers * 8
+            emitShlRegImm8(text, REG_R11, 3);                  // r11 = numIntegers * 8
             emitMovRegImm64(text, REG_RAX, 15);
             emitAddRegReg(text, REG_R11, REG_RAX);              // r11 += 15
             emitMovRegReg(text, REG_RAX, REG_R11);
@@ -304,10 +295,9 @@ static void genCall(ByteBuf *text, PatchList *patches, Expr *e, VarNode *locals)
             emitSubRegReg(text, REG_RSP, REG_RAX);               // sub rsp, rax
             emitMovRegReg(text, REG_R10, REG_RSP);
             emitMovRegReg(text, REG_R11, REG_RAX);
-            emitMovRegImm64(text, REG_RCX, 3);
-            emitShrRegCl(text, REG_R11);
+            emitShrRegImm8(text, REG_R11, 3);
             emitMovRegReg(text, REG_R8, REG_R10);
-            emitXorRegReg(text, REG_RAX, REG_RAX);
+            emitZeroReg(text, REG_RAX);
             zl = text[0].size;
             emitCmpRegImm8(text, REG_R11, 0);
             ze = emitJccRel32Placeholder(text, 0x4);
@@ -321,7 +311,7 @@ static void genCall(ByteBuf *text, PatchList *patches, Expr *e, VarNode *locals)
             patchRel32(text, ze, (int32_t)((int64_t)text[0].size - (int64_t)(ze + 4)));
             emitMovRegReg(text, REG_RAX, REG_R10);
         } else {
-            emitMovRegImm64(text, REG_RAX, 0);
+            emitZeroReg(text, REG_RAX);
         }
         return;
     }
@@ -352,7 +342,7 @@ static void genCall(ByteBuf *text, PatchList *patches, Expr *e, VarNode *locals)
     // stack args would break alignment, so we add one 8-byte pad slot if needed.
     int needsPad = (stackArgCount & 1) ? 1 : 0;
     if (needsPad) {
-        emitMovRegImm64(text, REG_RAX, 0);
+        emitZeroReg(text, REG_RAX);
         emitPushReg(text, REG_RAX);
     }
 
@@ -362,7 +352,7 @@ static void genCall(ByteBuf *text, PatchList *patches, Expr *e, VarNode *locals)
         if (i < argCount) {
             genExpr(text, patches, e[0].call.args[i], locals);
         } else {
-            emitMovRegImm64(text, REG_RAX, 0);
+            emitZeroReg(text, REG_RAX);
         }
         emitPushReg(text, REG_RAX);
     }
@@ -370,7 +360,7 @@ static void genCall(ByteBuf *text, PatchList *patches, Expr *e, VarNode *locals)
     // first 6 args in registers (evaluate in reverse order so nested calls don't overwrite earlier args)
     int regProvided = argCount < 6 ? argCount : 6;
     for (int i = regProvided; i < 6; i++) {
-        emitMovRegImm64(text, REG_RAX, 0);
+        emitZeroReg(text, REG_RAX);
         emitMovRegReg(text, argRegs[i], REG_RAX);
     }
     for (int i = regProvided - 1; i >= 0; i--) {
@@ -408,7 +398,7 @@ static void genCall(ByteBuf *text, PatchList *patches, Expr *e, VarNode *locals)
 }
 
 static void genExpr(ByteBuf *text, PatchList *patches, Expr *e, VarNode *locals) {
-    if (!e) { emitMovRegImm64(text, REG_RAX, 0); return; }
+    if (!e) { emitZeroReg(text, REG_RAX); return; }
     switch (e[0].kind) {
         case EX_INT:
             emitMovRegImm64(text, REG_RAX, (uint64_t)e[0].intValue);
@@ -430,7 +420,7 @@ static void genExpr(ByteBuf *text, PatchList *patches, Expr *e, VarNode *locals)
                 emitMovRegMemDisp(text, REG_RAX, REG_RAX, 0);
                 return;
             }
-            emitMovRegImm64(text, REG_RAX, 0);
+            emitZeroReg(text, REG_RAX);
             return;
         }
         case EX_ADDR:
@@ -438,10 +428,7 @@ static void genExpr(ByteBuf *text, PatchList *patches, Expr *e, VarNode *locals)
             {
                 int idx = findVarIndex(locals, e[0].addrName);
                 if (idx >= 0) {
-                    // rax = rbp - 8*(idx+1)
-                    emitMovRegReg(text, REG_RAX, REG_RBP);
-                    emitMovRegImm64(text, REG_R10, (uint64_t)(8 * (idx + 1)));
-                    emitSubRegReg(text, REG_RAX, REG_R10);
+                    emitLeaRegBaseDisp(text, REG_RAX, REG_RBP, -(int32_t)(8 * (idx + 1)));
                 } else if (strcmp(e[0].addrName, "buf") == 0) {
                     emitMovRegImm64Patch(text, patches, SEG_TEXT, REG_RAX, "buf", 0);
                 } else {
@@ -463,7 +450,7 @@ static void genExpr(ByteBuf *text, PatchList *patches, Expr *e, VarNode *locals)
             genBinOp(text, patches, e, locals);
             return;
     }
-    emitMovRegImm64(text, REG_RAX, 0);
+    emitZeroReg(text, REG_RAX);
 }
 
 static void genStmtListInternal(ByteBuf *text, PatchList *patches, Stmt *s, VarNode *locals, uint32_t stackAlloc, int emitDefaultReturn, size_t loopStart, BreakList *breakList) {
@@ -524,7 +511,7 @@ static void genStmtListInternal(ByteBuf *text, PatchList *patches, Stmt *s, VarN
         }
     }
     if (emitDefaultReturn) {
-        emitMovRegImm64(text, REG_RAX, 0);
+        emitZeroReg(text, REG_RAX);
         emitLeave(text);
         emitRet(text);
     }
@@ -583,7 +570,7 @@ static void genFunctionBytes(ByteBuf *text, PatchList *patches, Function *fn) {
     }
     // zero non-parameter locals (parameters must keep passed values)
     for (int i = fn[0].paramCount; i < localCount; i++) {
-        emitMovRegImm64(text, REG_RAX, 0);
+        emitZeroReg(text, REG_RAX);
         emitStoreLocal(text, i);
     }
 

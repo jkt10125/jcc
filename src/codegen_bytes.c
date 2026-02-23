@@ -142,6 +142,36 @@ void emitLeaRegBaseIndexScaleDisp(ByteBuf *b, Reg dst, Reg base, Reg index, int 
     emitSib(b, scale, index & 7, base & 7);
     emitU32(b, (uint32_t)disp);
 }
+void emitLeaRegBaseDisp(ByteBuf *b, Reg dst, Reg base, int32_t disp) {
+    // lea r64, [base + disp32] : 48 8D /r  (uses SIB with index=RSP for no index)
+    int r = (dst >> 3) & 1;
+    int bb = (base >> 3) & 1;
+    emitRexW(b, r, 0, bb);
+    emitU8(b, 0x8D);
+    emitModRm(b, 2, dst & 7, 4);
+    emitSib(b, 1, 4, base & 7);
+    emitU32(b, (uint32_t)disp);
+}
+void emitZeroReg(ByteBuf *b, Reg reg) {
+    // xor reg, reg (2-3 bytes) instead of mov reg, 0 (7-8 bytes)
+    emitXorRegReg(b, reg, reg);
+}
+void emitShrRegImm8(ByteBuf *b, Reg reg, uint8_t imm) {
+    // shr r/m64, imm8 : 48 C1 /5 ib
+    int bb = (reg >> 3) & 1;
+    emitRexW(b, 0, 0, bb);
+    emitU8(b, 0xC1);
+    emitModRm(b, 3, 5, reg & 7);
+    emitU8(b, imm);
+}
+void emitShlRegImm8(ByteBuf *b, Reg reg, uint8_t imm) {
+    // shl r/m64, imm8 : 48 C1 /4 ib
+    int bb = (reg >> 3) & 1;
+    emitRexW(b, 0, 0, bb);
+    emitU8(b, 0xC1);
+    emitModRm(b, 3, 4, reg & 7);
+    emitU8(b, imm);
+}
 void emitAddRegReg(ByteBuf *b, Reg dst, Reg src) {
     // add r/m64, r64 : 48 01 /r (dst is r/m, src is reg)
     int r = (src >> 3) & 1;
